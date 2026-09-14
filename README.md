@@ -4,10 +4,6 @@ Un petit jeu de tir à la première personne, **jouable immédiatement sur un PC
 sans compte, sans serveur, sans connexion Internet. Quatre cartes originales, trois armes,
 jusqu'à onze bots, trois niveaux de difficulté, parties de 2 à 10 minutes.
 
-**▶ Pour essayer sans rien installer :** https://brutus3120.github.io/shellshock-game/
-(version en ligne, publiée automatiquement à chaque commit — le jeu lui-même reste
-entièrement local et fonctionne hors connexion une fois la page chargée.)
-
 ![Menu principal](docs/menu.png)
 
 ---
@@ -115,6 +111,20 @@ Puis ouvrez **http://127.0.0.1:8000/**.
 
 **Navigateurs testés :** Chrome / Chromium / Edge / Brave et Firefox récents. Un navigateur
 supportant WebGL 1 suffit.
+
+### Version en ligne (optionnelle)
+
+Le dépôt contient un workflow qui publie le jeu sur GitHub Pages à chaque envoi sur `main`.
+GitHub exige que Pages soit **activé une fois à la main** par le propriétaire du dépôt — un
+jeton de workflow n'a pas le droit de créer le site lui-même :
+
+> Settings ▸ Pages ▸ *Build and deployment* ▸ **Source : GitHub Actions**
+
+Après cette activation, relancez le workflow (onglet Actions ▸ *Déployer sur GitHub Pages* ▸
+*Run workflow*) et le jeu sera jouable sur https://brutus3120.github.io/shellshock-game/.
+
+Ce n'est qu'un confort pour essayer sans rien installer : le jeu reste **entièrement local**
+et, une fois la page chargée, il ne fait plus aucune requête réseau.
 
 ---
 
