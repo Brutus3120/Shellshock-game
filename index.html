@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+<title>ÉCLAT — FPS arcade hors-ligne</title>
+<link rel="stylesheet" href="css/style.css" />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%230e1116'/><circle cx='16' cy='16' r='7' fill='none' stroke='%234fd1c5' stroke-width='2'/><rect x='15' y='2' width='2' height='7' fill='%234fd1c5'/><rect x='15' y='23' width='2' height='7' fill='%234fd1c5'/><rect x='2' y='15' width='7' height='2' fill='%234fd1c5'/><rect x='23' y='15' width='7' height='2' fill='%234fd1c5'/></svg>" />
+</head>
+<body>
+
+<canvas id="view"></canvas>
+
+<!-- ======================= ATH (en jeu) ======================= -->
+<div id="hud" class="hidden">
+  <div id="crosshair">
+    <span class="ch ch-t"></span><span class="ch ch-b"></span>
+    <span class="ch ch-l"></span><span class="ch ch-r"></span>
+    <span class="ch-dot"></span>
+  </div>
+  <div id="hitmarker"></div>
+  <div id="damage-flash"></div>
+
+  <div id="topbar">
+    <div class="tb-item"><span class="tb-label">TEMPS</span><span id="hud-time" class="tb-value">5:00</span></div>
+    <div class="tb-sep"></div>
+    <div class="tb-item"><span class="tb-label">VOS ÉLIMS</span><span id="hud-kills" class="tb-value accent">0</span></div>
+    <div class="tb-sep"></div>
+    <div class="tb-item"><span class="tb-label">MORTS</span><span id="hud-deaths" class="tb-value">0</span></div>
+    <div class="tb-sep"></div>
+    <div class="tb-item"><span class="tb-label">RANG</span><span id="hud-rank" class="tb-value">1<small>er</small></span></div>
+  </div>
+
+  <div id="leaderboard-mini"></div>
+  <div id="killfeed"></div>
+
+  <canvas id="minimap" width="180" height="180"></canvas>
+
+  <div id="bottom-left">
+    <div class="hp-row">
+      <span id="hp-value">100</span>
+      <div class="hp-bar"><div id="hp-fill"></div></div>
+    </div>
+    <div id="hp-label">VITALITÉ</div>
+  </div>
+
+  <div id="bottom-right">
+    <div id="weapon-name">Rafale-9</div>
+    <div id="ammo-row"><span id="ammo-mag">30</span><span id="ammo-sep">/</span><span id="ammo-res">180</span></div>
+    <div id="weapon-slots">
+      <span class="slot" data-slot="0">1 Rafale-9</span>
+      <span class="slot" data-slot="1">2 Lynx-M</span>
+      <span class="slot" data-slot="2">3 Broyeur-12</span>
+    </div>
+    <div id="reload-hint" class="hidden">RECHARGER [R]</div>
+  </div>
+
+  <div id="fps-counter"></div>
+  <div id="respawn-overlay" class="hidden">
+    <div class="respawn-title">ÉLIMINÉ</div>
+    <div class="respawn-by" id="respawn-by"></div>
+    <div class="respawn-timer" id="respawn-timer">3</div>
+  </div>
+
+  <div id="scoreboard" class="hidden">
+    <h2>CLASSEMENT</h2>
+    <table><thead><tr><th>#</th><th>Joueur</th><th>Élims</th><th>Morts</th><th>Ratio</th></tr></thead>
+    <tbody id="sb-body"></tbody></table>
+    <div class="sb-hint">Maintenez <kbd>Tab</kbd></div>
+  </div>
+</div>
+
+<!-- ======================= MENUS ======================= -->
+<div id="overlay">
+
+  <!-- MENU PRINCIPAL -->
+  <section id="screen-main" class="screen">
+    <div class="brand">
+      <div class="brand-mark"></div>
+      <div>
+        <h1>ÉCLAT</h1>
+        <p class="brand-sub">FPS arcade · hors-ligne · contre des bots</p>
+      </div>
+    </div>
+
+    <div class="main-grid">
+      <div class="panel">
+        <h3>Partie rapide</h3>
+
+        <div class="field">
+          <label>Carte</label>
+          <div class="field-value"><span id="cfg-map">Arène Cendrée</span>
+            <button class="btn-small" id="btn-choose-map">Choisir…</button></div>
+        </div>
+
+        <div class="field">
+          <label>Nombre de bots <b id="cfg-bots-val">5</b></label>
+          <input type="range" id="cfg-bots" min="1" max="11" step="1" value="5" />
+        </div>
+
+        <div class="field">
+          <label>Difficulté des bots</label>
+          <div class="seg" id="cfg-diff">
+            <button data-v="facile">Facile</button>
+            <button data-v="normal" class="on">Normal</button>
+            <button data-v="difficile">Difficile</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Durée de la partie</label>
+          <div class="seg" id="cfg-duration">
+            <button data-v="120">2 min</button>
+            <button data-v="300" class="on">5 min</button>
+            <button data-v="600">10 min</button>
+            <button data-v="0">Illimité</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Limite d'éliminations <b id="cfg-score-val">25</b></label>
+          <input type="range" id="cfg-score" min="0" max="60" step="5" value="25" />
+          <small class="hint">0 = pas de limite, seul le temps compte.</small>
+        </div>
+
+        <div class="field">
+          <label>Arme de départ</label>
+          <div class="seg" id="cfg-weapon">
+            <button data-v="rafale" class="on">Rafale-9</button>
+            <button data-v="lynx">Lynx-M</button>
+            <button data-v="broyeur">Broyeur-12</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel side">
+        <div id="map-preview-wrap">
+          <canvas id="map-preview" width="300" height="300"></canvas>
+          <div class="mp-name" id="mp-name">Arène Cendrée</div>
+          <div class="mp-desc" id="mp-desc"></div>
+        </div>
+        <button class="btn btn-primary big" id="btn-play">JOUER</button>
+        <button class="btn" id="btn-options">OPTIONS</button>
+        <button class="btn ghost" id="btn-quit">QUITTER</button>
+        <p class="foot-note">Aucune connexion requise. Cliquez dans la fenêtre pour capturer la souris.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- SÉLECTION DE CARTE -->
+  <section id="screen-maps" class="screen hidden">
+    <h2 class="screen-title">SÉLECTION DE LA CARTE</h2>
+    <div id="map-grid"></div>
+    <div class="row-end"><button class="btn" id="btn-maps-back">RETOUR</button></div>
+  </section>
+
+  <!-- OPTIONS -->
+  <section id="screen-options" class="screen hidden">
+    <h2 class="screen-title">OPTIONS</h2>
+    <div class="panel wide">
+      <div class="field"><label>Sensibilité souris <b id="opt-sens-val">1.00</b></label>
+        <input type="range" id="opt-sens" min="0.2" max="3" step="0.05" value="1" /></div>
+      <div class="field"><label>Champ de vision <b id="opt-fov-val">82°</b></label>
+        <input type="range" id="opt-fov" min="60" max="110" step="1" value="82" /></div>
+      <div class="field"><label>Qualité graphique</label>
+        <div class="seg" id="opt-quality">
+          <button data-v="bas">Bas</button><button data-v="moyen" class="on">Moyen</button><button data-v="haut">Haut</button>
+        </div>
+        <small class="hint">« Bas » réduit la résolution de rendu et coupe les ombres : c'est le réglage à choisir sur un PC modeste.</small>
+      </div>
+      <div class="field"><label>Volume <b id="opt-vol-val">60%</b></label>
+        <input type="range" id="opt-vol" min="0" max="1" step="0.05" value="0.6" /></div>
+      <div class="field toggles">
+        <label class="chk"><input type="checkbox" id="opt-minimap" checked /> <span>Mini-carte</span></label>
+        <label class="chk"><input type="checkbox" id="opt-fps" checked /> <span>Compteur d'images/s</span></label>
+        <label class="chk"><input type="checkbox" id="opt-invert" /> <span>Inverser l'axe vertical</span></label>
+      </div>
+      <div class="row-end">
+        <button class="btn ghost" id="btn-opt-reset">RÉINITIALISER</button>
+        <button class="btn btn-primary" id="btn-opt-back">RETOUR</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- PAUSE -->
+  <section id="screen-pause" class="screen hidden">
+    <h2 class="screen-title">PAUSE</h2>
+    <div class="panel narrow">
+      <button class="btn btn-primary big" id="btn-resume">REPRENDRE</button>
+      <button class="btn" id="btn-pause-options">OPTIONS</button>
+      <button class="btn" id="btn-restart">RECOMMENCER</button>
+      <button class="btn ghost" id="btn-to-menu">MENU PRINCIPAL</button>
+      <div class="controls-card">
+        <h4>CONTRÔLES</h4>
+        <ul>
+          <li><kbd>Z</kbd><kbd>Q</kbd><kbd>S</kbd><kbd>D</kbd> ou <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> — se déplacer</li>
+          <li><kbd>Maj</kbd> — courir &nbsp;·&nbsp; <kbd>Ctrl</kbd>/<kbd>C</kbd> — s'accroupir &nbsp;·&nbsp; <kbd>Espace</kbd> — sauter</li>
+          <li><kbd>Clic G</kbd> — tirer &nbsp;·&nbsp; <kbd>Clic D</kbd> — viser &nbsp;·&nbsp; <kbd>R</kbd> — recharger</li>
+          <li><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> / molette — changer d'arme &nbsp;·&nbsp; <kbd>Tab</kbd> — classement</li>
+          <li><kbd>Échap</kbd> — pause</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- FIN DE PARTIE -->
+  <section id="screen-end" class="screen hidden">
+    <h2 class="screen-title" id="end-title">FIN DE PARTIE</h2>
+    <div class="panel wide">
+      <div id="end-summary"></div>
+      <table class="ranking"><thead><tr><th>#</th><th>Joueur</th><th>Élims</th><th>Morts</th><th>Ratio</th></tr></thead>
+        <tbody id="end-body"></tbody></table>
+      <div class="row-end">
+        <button class="btn btn-primary" id="btn-again">REJOUER</button>
+        <button class="btn" id="btn-end-menu">MENU PRINCIPAL</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- CHARGEMENT -->
+  <section id="screen-loading" class="screen hidden">
+    <div class="loading-box">
+      <div class="spinner"></div>
+      <div id="loading-text">Construction de la carte…</div>
+    </div>
+  </section>
+
+  <!-- INVITE DE CAPTURE SOURIS -->
+  <section id="screen-click" class="screen hidden transparent">
+    <div class="click-box">
+      <div class="click-icon"></div>
+      <p>Cliquez pour jouer</p>
+      <small><kbd>Échap</kbd> pour mettre en pause</small>
+    </div>
+  </section>
+
+</div>
+
+<noscript><p style="color:#fff;padding:2rem">Ce jeu nécessite JavaScript.</p></noscript>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,8 @@
+# Rien à construire dans ce projet : on ignore seulement le bruit habituel.
+node_modules/
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
