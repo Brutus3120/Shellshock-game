@@ -31,6 +31,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
+        with:
+          # Active Pages automatiquement si ce n'est pas déjà fait, pour ne pas
+          # exiger un passage manuel dans les réglages du dépôt.
+          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: '.'
