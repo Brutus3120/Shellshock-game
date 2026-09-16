@@ -527,11 +527,18 @@ Aucune refonte. Le jeu reste jouable à chaque étape.
    terrain dégagé). La finesse devient un réglage de `QUALITY` : 1,7 m en `bas`, 0,9 m en `haut`.
    Mesuré : 29 à 98 ms de construction, 8,7k à 56k triangles selon la carte et le préréglage,
    toujours **un seul draw call**, graphe de navigation inchangé (277 / 613 / 340 / 726 nœuds).
-4. **Flash de bouche.** Nouveau pool dans `effects.js`, appelé depuis `fireShot`, avec une variante
-   dans la scène du modèle d'arme.
+4. ~~**Flash de bouche.**~~ **Fait.** Étoile à couleur de sommet (centre coloré, pourtour noir,
+   additif) : aucune texture, un dégradé radial gratuit. Le joueur a la sienne accrochée à son
+   arme, donc elle hérite du recul sans une ligne de synchronisation ; les bots passent par un pool
+   de 16 dans `effects.js`, orienté face à la caméra à l'allumage. Taille, couleur et durée par
+   arme (`muzzle` dans `config.js`). Mesuré : **+1 draw call**, 0 allocation par tir. Au passage,
+   `muzzlePosition` faisait partir le coup du visage des bots au lieu de leur arme — invisible avec
+   une traçante fine, flagrant avec un flash.
 5. **Ombres de contact.** Un maillage unique de quads, mis à jour depuis la boucle de `game.js`.
-6. **Suppression des allocations de `THREE.Color` par tir.** Table de couleurs pré-calculée dans
-   `effects.js`.
+6. ~~**Suppression des allocations de `THREE.Color` par tir.**~~ **Fait**, avec l'étape 4 : cache
+   `hex → {r,g,b}` dans `effects.js`, rempli via `THREE.Color` pour conserver la conversion
+   sRGB → linéaire de r169. `muzzlePosition` écrit désormais dans un objet réutilisé au lieu d'en
+   allouer un par plomb.
 7. **Chevron orange et nettoyage de `BOT_COLORS`.**
 8. **Direction des dégâts et vignettage de vie basse.** `hud.js` et `style.css`.
 

@@ -98,8 +98,15 @@ Ce sont les endroits où une modification « évidente » casse silencieusement 
   l'empêche de traverser les murs et de se déformer au zoom.
 - **Éclairage physique r169.** Depuis r155 l'intensité 1 est très sombre : `HEMI_GAIN = 3.4` et
   `SUN_GAIN = 3.6` compensent. Deux lumières au total, jamais plus.
-- **Additive blending obligatoire** sur traceurs et étincelles, sinon ils sortent en traits
-  sombres sur fond clair.
+- **Additive blending obligatoire** sur traceurs, étincelles et flashs de bouche, sinon ils
+  sortent en traits sombres sur fond clair.
+- **Le flash de bouche est une étoile à couleur de sommet** : un éventail de triangles dont le
+  centre porte la couleur et dont **tout le pourtour est noir**. En additif le noir ne dessine
+  rien, donc ce noir *est* le dégradé — l'« éclaircir » rendrait un polygone plat et opaque. Même
+  silhouette des deux côtés (`FLASH_RADII` dans `weapons.js`), mais deux implantations : le joueur
+  a la sienne accrochée à son arme, donc elle suit le recul sans code ; les bots passent par un
+  pool de `effects.js`, orienté face à la caméra à l'allumage. `VM_FLASH_SCALE` réduit la première :
+  les deux caméras ne regardent pas à la même distance.
 - **Pointer lock exige un geste utilisateur** et impose un délai après Échap — d'où l'écran
   « cliquer pour jouer ». `#overlay` est en `pointer-events:none`, seuls les `.screen` captent
   les clics ; l'inverse avale les clics destinés au canvas.
