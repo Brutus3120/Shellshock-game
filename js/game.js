@@ -158,24 +158,48 @@ export class Game {
 
   // --------------------------------------------------------- réapparition ---
 
-  /** Choisit le point de réapparition le plus loin des ennemis vivants. */
+  /**
+   * Hauteur où un acteur tient debout en (x, z), ou null si l'endroit est inutilisable.
+   *
+   * Le test de recouvrement n'est pas une précaution de principe : quand la sonde de
+   * sol démarre à l'intérieur d'un solide — un point de réapparition posé sur une
+   * cloison traversante, par exemple — `rayBox` renvoie une distance nulle et
+   * `groundHeight` rend la hauteur de sonde elle-même. L'acteur apparaîtrait alors en
+   * haut du mur, puis sur le toit, puis dans le vide. C'est exactement le contrôle que
+   * `buildNav` applique déjà à ses nœuds.
+   */
+  standingY(x, z) {
+    const y = this.groundAt(x, z);
+    if (y < -0.5 || y > 20) return null;
+    const r = PLAYER.radius + 0.05;
+    if (this.world.collision.overlaps(x - r, y + 0.1, z - r, x + r, y + PLAYER.heightStand, z + r)) return null;
+    return y;
+  }
+
+  /** Choisit le point de réapparition praticable le plus loin des ennemis vivants. */
   respawnActor(actor, initial = false) {
     const spawns = this.mapData.spawns;
     let best = null, bestScore = -Infinity;
     for (let i = 0; i < spawns.length; i++) {
       const [x, z] = spawns[i];
+      const y = this.standingY(x, z);
+      if (y === null) continue;
       let minDist = Infinity;
       for (const a of this.actors || []) {
         if (a === actor || !a.alive) continue;
         minDist = Math.min(minDist, Math.hypot(a.pos.x - x, a.pos.z - z));
       }
       const score = (minDist === Infinity ? 100 : minDist) + Math.random() * 6;
-      if (score > bestScore) { bestScore = score; best = [x, z]; }
+      if (score > bestScore) { bestScore = score; best = [x, y, z]; }
     }
-    const [x, z] = best || [0, 0];
-    const y = this.groundAt(x, z) + 0.05;
+    // Aucun point utilisable : le graphe de navigation n'en propose que des valides.
+    if (!best) {
+      const n = this.world.nav.random();
+      best = n ? [n.x, n.y, n.z] : [0, this.groundAt(0, 0), 0];
+    }
+    const [x, y, z] = best;
     const yaw = Math.atan2(x, z);             // orienté vers le centre de la carte
-    actor.spawn(x, y, z, yaw);
+    actor.spawn(x, y + 0.05, z, yaw);
     if (initial && actor === this.player) this.player.loadout.reset(this.opts.weapon);
   }
 
