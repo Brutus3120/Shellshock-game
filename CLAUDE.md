@@ -59,6 +59,10 @@ js/
   hud.js          barre de vie, munitions, score, killfeed, minimap
   audio.js        SFX synthétisés à la volée en WebAudio
   game.js         le match : monde, acteurs, tir, caméra, rendu, classement
+tools/            vérification (développement seulement, voir tools/README.md)
+  geometrie.mjs   coût géométrique des cartes, sans navigateur
+  simulation.mjs  partie de 60 s par carte, dans Chromium
+  captures.mjs    images à caméra fixe, pour comparer un avant/après
 ```
 
 ## Invariants porteurs
@@ -134,10 +138,12 @@ d'erreur numéro un quand on ajoute une boîte.
   est synthétisé. Ne pas importer de contenu d'un jeu existant.
 - **Ajouter une dépendance est un choix à justifier**, pas un réflexe. Aujourd'hui il y en a une
   seule, vendorée.
-- **Vérifier dans un vrai navigateur**, pas par lecture. Le harnais dispose de Chromium
-  (`PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers`, lancer avec `--use-gl=angle
-  --use-angle=swiftshader --enable-unsafe-swiftshader`). Le test qui a de la valeur est une
-  simulation de 60 s sur chaque carte : on regarde le nombre d'éliminations, les bots bloqués au
-  spawn, les acteurs passés sous le sol, et la console.
+- **Vérifier dans un vrai navigateur**, pas par lecture. Les outils de `tools/` le font :
+  `node tools/geometrie.mjs` (deux secondes, sans navigateur) puis `node tools/simulation.mjs`
+  (60 s de jeu par carte dans Chromium — éliminations, bots bloqués au spawn, acteurs passés sous
+  le sol, draw calls du décor, console). `tools/captures.mjs` compare un avant/après en images.
+  Ils sont facultatifs et réservés au développement : le jeu, lui, n'a toujours aucune dépendance
+  et se lance avec `play.sh`. Voir `tools/README.md`, qui documente notamment pourquoi
+  `renderer.info` ment si on le lit après coup.
 - **Le projet doit rester petit et lisible.** C'est une exigence du cahier des charges, pas un
   effet de bord.
