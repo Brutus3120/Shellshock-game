@@ -200,12 +200,18 @@ export function createViewModel(id) {
   return g;
 }
 
-/** Petite arme portée par les bots, vue de l'extérieur. */
-export function createBotWeaponMesh(color) {
-  const g = new THREE.Group();
-  g.add(box(0.09, 0.1, 0.55, 0x2b3038, 0, 0, -0.2));
-  g.add(box(0.06, 0.06, 0.14, color, 0, 0.06, -0.05));
-  return g;
+/**
+ * Petite arme portée par les bots, vue de l'extérieur — décrite en boîtes et
+ * non en `Mesh` : bots.js la fusionne dans la géométrie du bras. Les formes
+ * d'armes restent décrites ici, avec celles de la vue subjective.
+ *
+ * Repère de l'arme : le canon part vers -Z, l'origine est le point de montage.
+ */
+export function botWeaponBoxes(color) {
+  return [
+    { w: 0.09, h: 0.10, d: 0.55, x: 0, y: 0, z: -0.20, color: 0x2b3038 },
+    { w: 0.06, h: 0.06, d: 0.14, x: 0, y: 0.06, z: -0.05, color },
+  ];
 }
 
 export { WEAPON_ORDER };

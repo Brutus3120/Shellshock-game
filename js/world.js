@@ -241,6 +241,74 @@ export function buildWorld(mapData, quality) {
 }
 
 /**
+ * Fusionne une liste de boîtes en une géométrie unique à couleur par sommet.
+ *
+ * Même principe que la fusion de la carte ci-dessus, mais à l'échelle d'un
+ * personnage : c'est ce qui permet à un bot de tenir en quatre draw calls au
+ * lieu de neuf (voir `buildBotMesh` dans bots.js). Ni subdivision ni occlusion
+ * ambiante : une pièce de vingt centimètres n'y gagnerait rien de visible, et
+ * la facture serait payée une fois par bot.
+ *
+ * `parts` : `[{ w, h, d, x, y, z, color, ry }]`. x/y/z désignent le CENTRE de
+ * la boîte, comme une `BoxGeometry` — et non sa base comme le helper `B` de
+ * maps.js. `ry` est facultatif : une rotation autour de Y, cuite dans les
+ * sommets et les normales.
+ */
+export function mergeBoxGeometry(parts) {
+  const n = parts.length;
+  const positions = new Float32Array(n * 24 * 3);
+  const normals = new Float32Array(n * 24 * 3);
+  const colors = new Float32Array(n * 24 * 3);
+  // Uint16 suffit très largement à un personnage ; le garde-fou évite qu'un
+  // appel plus gourmand ne dépasse 65 535 sommets sans rien dire.
+  const indices = n * 24 > 65535 ? new Uint32Array(n * 36) : new Uint16Array(n * 36);
+
+  const col = new THREE.Color();
+  let vp = 0, ip = 0, vi = 0;
+
+  for (let b = 0; b < n; b++) {
+    const part = parts[b];
+    const hw = part.w / 2, hh = part.h / 2, hd = part.d / 2;
+    const ry = part.ry || 0;
+    const cs = Math.cos(ry), sn = Math.sin(ry);
+    // setHex et pas un décalage de bits : c'est lui qui applique la conversion
+    // sRGB → linéaire de r169, comme pour le décor juste au-dessus.
+    col.setHex(part.color);
+
+    for (let f = 0; f < 6; f++) {
+      const [N, O, U, V] = FACES[f];
+      for (let v = 0; v < 4; v++) {
+        // o, o+U, o+U+V, o+V : le tour de la face dans le sens trigonométrique.
+        const u = (v === 1 || v === 2) ? 1 : 0;
+        const t = (v === 2 || v === 3) ? 1 : 0;
+        const lx = (O[0] + U[0] * u + V[0] * t) * hw;
+        const ly = (O[1] + U[1] * u + V[1] * t) * hh;
+        const lz = (O[2] + U[2] * u + V[2] * t) * hd;
+        positions[vp] = part.x + lx * cs + lz * sn;
+        positions[vp + 1] = part.y + ly;
+        positions[vp + 2] = part.z - lx * sn + lz * cs;
+        normals[vp] = N[0] * cs + N[2] * sn;
+        normals[vp + 1] = N[1];
+        normals[vp + 2] = -N[0] * sn + N[2] * cs;
+        colors[vp] = col.r; colors[vp + 1] = col.g; colors[vp + 2] = col.b;
+        vp += 3;
+      }
+      indices[ip] = vi; indices[ip + 1] = vi + 1; indices[ip + 2] = vi + 2;
+      indices[ip + 3] = vi; indices[ip + 4] = vi + 2; indices[ip + 5] = vi + 3;
+      ip += 6; vi += 4;
+    }
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geo.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  geo.setIndex(new THREE.BufferAttribute(indices, 1));
+  geo.computeBoundingSphere();
+  return geo;
+}
+
+/**
  * Graphe de navigation généré automatiquement : on échantillonne une grille,
  * on garde les points où un acteur tient debout. Aucun navmesh à éditer à la main,
  * et une nouvelle carte devient jouable par les bots sans travail supplémentaire.

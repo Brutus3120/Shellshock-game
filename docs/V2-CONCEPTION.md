@@ -370,11 +370,28 @@ Coût : faible.
 
 ## Le gain de performance d'abord
 
-Fusionner chaque bot en trois maillages au lieu de neuf : jambes, buste + tête + visière, bras +
-arme. Trois groupes suffisent pour animer, et on passe de ~108 à ~36 draw calls sur douze bots.
-Les géométries sont construites une seule fois par archétype et mises en cache dans un objet de
-module ; seul le matériau change par bot. Aujourd'hui chaque bot alloue ses propres `BoxGeometry`,
-ce qui est du gaspillage pur.
+**Fait.** Chaque bot tient en **quatre** maillages fusionnés au lieu de neuf : jambe gauche, jambe
+droite, buste (torse + bassin + tête + visière), bras + arme. Mesuré sur onze bots tous visibles :
+**99 → 44 draw calls**, à triangles rigoureusement identiques.
+
+Deux écarts avec le plan initial, tous deux assumés.
+
+*Quatre groupes et non trois.* Les jambes restent séparées l'une de l'autre : le cycle de marche
+décrit plus bas les fait osciller en opposition, ce qu'un bloc de jambes unique interdit. La
+différence coûte un draw call par bot et évite de re-découper la géométrie au moment de l'animer.
+
+*Couleur par sommet et non par matériau.* Un groupe fusionné mélange des teintes — le buste porte
+la couleur du bot ET la visière `0x12161c`, le bras porte la couleur du bot ET le canon
+`0x2b3038` — et un matériau uni ne sait pas rendre ça. La couleur passe donc dans les sommets,
+exactement comme le décor dans `world.js`, ce qui fait que la géométrie est construite par bot et
+non mise en cache par archétype. Ce sont quelques centaines de flottants par bot, construits une
+fois à l'apparition, contre neuf `BoxGeometry` et neuf matériaux auparavant. Un seul
+`MeshLambertMaterial({ vertexColors: true })` par bot sert ses quatre maillages ; il reste propre à
+chaque bot pour que le flash de dégâts ci-dessous puisse monter l'émissive d'un bot sans toucher
+aux autres.
+
+La fusion elle-même vit dans `world.js` (`mergeBoxGeometry`), à côté de celle du décor : même
+table de faces, même conversion sRGB → linéaire, pas de subdivision ni d'AO à cette échelle.
 
 Ce gain finance tout ce qui suit.
 
@@ -554,7 +571,11 @@ Aucune refonte. Le jeu reste jouable à chaque étape.
 12. **Animations d'arme** : recul, balancement de marche, rechargement en trois temps, changement
     d'arme.
 13. **Motifs de recul par arme**, avec `recoilPattern` dans `config.js`.
-14. **Fusion des maillages de bots en trois groupes**, géométries mises en cache par archétype.
+14. ~~**Fusion des maillages de bots.**~~ **Fait**, en quatre groupes et non trois (jambe gauche,
+    jambe droite, buste, bras) pour garder le cycle de marche possible. Couleur par sommet via
+    `mergeBoxGeometry` dans `world.js`, un matériau par bot. Mesuré : **9 → 4 draw calls par bot**,
+    soit 99 → 44 à onze bots, triangles identiques (108 par bot), capture de contrôle identique au
+    pixel près.
 15. **Archétypes de bots** et remplacement des tests `def.id === 'broyeur'` par `idealRange`.
 16. **Douilles, fumée, poussière.**
 17. **Écran d'équipement au menu** : trois cases au lieu du sélecteur unique, fiches comparatives
@@ -605,8 +626,8 @@ trois identifiants.
 C'est le fichier le plus gros (577 lignes) ; si la partie projectiles le fait dépasser 750, elle
 sort dans son propre module.
 
-`js/bots.js` — maillages fusionnés, archétypes, `idealRange` au lieu des tests par identifiant,
-animation des jambes, flash de dégâts, chute à la mort.
+`js/bots.js` — maillages fusionnés (fait), archétypes, `idealRange` au lieu des tests par
+identifiant, animation des jambes, flash de dégâts, chute à la mort.
 
 `js/hud.js`, `index.html`, `css/style.css` — direction des dégâts, vignettage, icônes d'armes,
 hauteur sur la mini-carte, nombres de dégâts, écran de fin.
@@ -657,8 +678,8 @@ Les dix premières choses à faire, dans l'ordre, en évitant de refaire ce qui 
 3. **Tone mapping ACES + exposition par carte** (`game.js`, `maps.js`). Trois lignes, effet global.
 4. **Ciel en dégradé** (`world.js`). Un draw call, et les cartes extérieures cessent d'être des
    boîtes.
-5. **Fusion des maillages de bots** (`bots.js`). Environ 70 draw calls récupérés, qui financent
-   tout le reste.
+5. ~~**Fusion des maillages de bots**~~ (`bots.js`). **Fait** : 55 draw calls récupérés à onze
+   bots (99 → 44), qui financent tout le reste.
 6. **Ombres de contact** (`effects.js`). Ancre les acteurs au sol sur tous les préréglages, y
    compris `bas`.
 7. **Séparation catalogue / inventaire** (`config.js`, `weapons.js`, `bots.js`). Prérequis
