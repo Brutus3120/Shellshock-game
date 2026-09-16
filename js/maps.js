@@ -7,6 +7,11 @@
  * et la collision reste triviale.
  *
  * Convention d'une boîte : x/z = centre, y = BASE (sol), w/h/d = dimensions.
+ *
+ * Couleurs d'ambiance d'une carte : `sky` est la teinte de l'horizon — c'est
+ * aussi celle du brouillard et du fond quand il n'y a pas de dôme — et `skyTop`
+ * celle du zénith. Déclarer `skyTop` suffit à obtenir le ciel en dégradé ; une
+ * carte couverte l'omet.
  */
 
 // ---------------------------------------------------------------- helpers ---
@@ -102,7 +107,7 @@ function mapArene() {
     name: 'Arène Cendrée',
     desc: 'Petite arène ouverte, plateforme centrale et coursives. Duels immédiats.',
     tagline: 'Ouverte · rapide',
-    sky: 0x2a3142, fog: 0x2a3142, ground: C.sol,
+    sky: 0x2a3142, skyTop: 0x1a1b30, fog: 0x2a3142, ground: C.sol,
     sampleY: 40,
     sun: { color: 0xffe7c4, intensity: 1.05, dir: [0.4, 1, 0.25] },
     hemi: { sky: 0x6f8fb5, ground: 0x34302c, intensity: 0.85 },
@@ -166,7 +171,7 @@ function mapQuartier() {
     name: 'Quartier Béton',
     desc: 'Plusieurs bâtiments traversables, toits reliés par des passerelles.',
     tagline: 'Bâtiments · verticalité',
-    sky: 0x3b4050, fog: 0x3b4050, ground: C.sol,
+    sky: 0x3b4050, skyTop: 0x232a40, fog: 0x3b4050, ground: C.sol,
     sampleY: 40,
     sun: { color: 0xfff0d0, intensity: 1.0, dir: [-0.35, 1, 0.4] },
     hemi: { sky: 0x8aa0bd, ground: 0x3a352e, intensity: 0.8 },
@@ -236,6 +241,8 @@ function mapBunker() {
     name: 'Bunker Halogène',
     desc: 'Couloirs, salles fermées et angles courts. Le fusil à pompe y règne.',
     tagline: 'Intérieur · couloirs',
+    // Pas de `skyTop` : sous un plafond, un ciel en dégradé coûterait un draw
+    // call pour quelque chose d'invisible.
     sky: 0x1b2026, fog: 0x1b2026, ground: C.sol,
     // Carte fermée : on sonde le sol SOUS le plafond, sinon points de
     // réapparition et navigation atterriraient sur le toit du bunker.
@@ -312,7 +319,7 @@ function mapCrete() {
     name: 'Crête Ocre',
     desc: 'Reliefs étagés et point haut central. Portées longues, flancs couverts.',
     tagline: 'Relief · hauteurs',
-    sky: 0x6b5a44, fog: 0x6b5a44, ground: C.sol,
+    sky: 0x6b5a44, skyTop: 0x3f4352, fog: 0x6b5a44, ground: C.sol,
     sampleY: 40,
     sun: { color: 0xffd9a0, intensity: 1.15, dir: [0.5, 0.9, -0.35] },
     hemi: { sky: 0xc9a878, ground: 0x4a3c28, intensity: 0.75 },

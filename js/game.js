@@ -9,7 +9,7 @@
 import * as THREE from '../vendor/three.module.js';
 import { PLAYER, BOT_NAMES, BOT_COLORS, DIFFICULTIES, QUALITY, PICKUP, TICK_MAX, WEAPON_ORDER } from './config.js';
 import { buildMapData } from './maps.js';
-import { buildWorld, setupLights } from './world.js';
+import { buildWorld, buildSky, setupLights } from './world.js';
 import { Player } from './player.js';
 import { Bot } from './bots.js';
 import { Effects } from './effects.js';
@@ -19,6 +19,8 @@ import { Input, KEY } from './input.js';
 import * as Sfx from './audio.js';
 
 const TMP = { x: 0, y: 0, z: 0 };
+const MUZZLE = { x: 0, y: 0, z: 0 };   // sortie réutilisée de muzzlePosition
+const DIR = { x: 0, y: 0, z: 0 };      // direction non dispersée, pour le flash
 
 export class Game {
   constructor(canvas, opts, settings, hud) {
@@ -75,14 +77,18 @@ export class Game {
 
   _setupWorld() {
     this.mapData = buildMapData(this.opts.map);
-    this.world = buildWorld(this.mapData);
+    this.world = buildWorld(this.mapData, this.quality);
 
     this.scene = new THREE.Scene();
+    // Fond uni à la teinte de l'horizon : ce que voient les cartes couvertes,
+    // et ce que le dôme recouvre entièrement sur les autres.
     this.scene.background = new THREE.Color(this.mapData.sky);
     // Le brouillard commence tard : il sert à masquer la coupure lointaine,
     // pas à assombrir le combat rapproché.
     this.scene.fog = new THREE.Fog(this.mapData.fog, this.quality.fogFar * 0.45, this.quality.fogFar);
     this.scene.add(this.world.mesh);
+    this.sky = buildSky(this.mapData);
+    if (this.sky) this.scene.add(this.sky);
     if (this.quality.shadows) { this.world.mesh.receiveShadow = true; this.world.mesh.castShadow = true; }
     this.lights = setupLights(this.scene, this.mapData, this.quality.shadows);
 
@@ -143,6 +149,7 @@ export class Game {
       this.viewModels[id] = m;
     }
     this.vmRecoil = 0;
+    this.vmFlash = 0;        // secondes restantes d'allumage du flash de bouche
   }
 
   resize() {
@@ -250,6 +257,17 @@ export class Game {
       }
     }
 
+    // Flash de bouche : UN par coup, donc hors de la boucle sur les plombs,
+    // sinon le Broyeur-12 en allumerait neuf d'un coup.
+    if (isPlayer) {
+      this.vmFlash = def.muzzle.life;
+    } else {
+      DIR.x = bx; DIR.y = by; DIR.z = bz;
+      const m = this.muzzlePosition(shooter, false, DIR);
+      const c = this.camera.position;
+      this.effects.addMuzzle(m.x, m.y, m.z, c.x, c.y, c.z, def.muzzle);
+    }
+
     if (isPlayer) {
       const kick = def.recoil * (shooter.ads > 0.5 ? 0.65 : 1) * (shooter.crouching ? 0.8 : 1);
       shooter.addRecoil(kick * 0.012, (Math.random() - 0.5) * kick * 0.006);
@@ -259,17 +277,29 @@ export class Game {
     }
   }
 
+  /**
+   * Point d'où part visuellement le coup. Écrit dans un objet réutilisé : la
+   * valeur est consommée tout de suite par l'appelant, et un tir de fusil à
+   * pompe appelle cette fonction dix fois.
+   */
   muzzlePosition(shooter, isPlayer, d) {
+    const m = MUZZLE;
     if (isPlayer) {
       // Légèrement décalé pour que la traçante semble sortir de l'arme tenue.
       const rx = -Math.cos(shooter.viewYaw), rz = Math.sin(shooter.viewYaw);
-      return {
-        x: shooter.pos.x + rx * 0.22 + d.x * 0.6,
-        y: shooter.eyeY - 0.14 + d.y * 0.6,
-        z: shooter.pos.z + rz * 0.22 + d.z * 0.6,
-      };
+      m.x = shooter.pos.x + rx * 0.22 + d.x * 0.6;
+      m.y = shooter.eyeY - 0.14 + d.y * 0.6;
+      m.z = shooter.pos.z + rz * 0.22 + d.z * 0.6;
+    } else {
+      // Le bot porte son arme sur le bras droit, à 1,18 m et 0,30 m sur le côté
+      // (voir buildBotMesh). Partir des yeux ferait sortir le coup du visage —
+      // invisible avec une traçante fine, flagrant avec un flash de bouche.
+      const rx = Math.cos(shooter.yaw), rz = -Math.sin(shooter.yaw);
+      m.x = shooter.pos.x + rx * 0.30 + d.x * 0.62;
+      m.y = shooter.pos.y + 1.18 + d.y * 0.62;
+      m.z = shooter.pos.z + rz * 0.30 + d.z * 0.62;
     }
-    return { x: shooter.pos.x + d.x * 0.5, y: shooter.eyeY - 0.1 + d.y * 0.5, z: shooter.pos.z + d.z * 0.5 };
+    return m;
   }
 
   traceShot(shooter, ox, oy, oz, dx, dy, dz, def, damageMul) {
@@ -390,7 +420,9 @@ export class Game {
     else if (input.hit(...KEY.w2)) switched = p.loadout.select(1);
     else if (input.hit(...KEY.w3)) switched = p.loadout.select(2);
     else if (input.wheel !== 0) switched = p.loadout.cycle(input.wheel > 0 ? 1 : -1);
-    if (switched) { Sfx.sfxSwitch(); this.updateViewModel(); }
+    // Changer d'arme coupe le flash en cours : sans ça, la nouvelle arme
+    // s'allumerait pour un coup qu'elle n'a pas tiré.
+    if (switched) { this.vmFlash = 0; Sfx.sfxSwitch(); this.updateViewModel(); }
 
     const w = p.loadout.current;
     if (input.hit(...KEY.reload) && w.startReload()) Sfx.sfxReload();
@@ -468,6 +500,13 @@ export class Game {
     this.camera.rotation.x = p.viewPitch + sy;
     this.camera.rotation.z = bobX * 0.6;
 
+    // Le ciel suit la caméra sans tourner avec elle : le dégradé reste tenu par
+    // le monde, et l'horizon est à hauteur d'yeux où que le joueur aille.
+    if (this.sky) {
+      this.sky.position.copy(this.camera.position);
+      this.sky.updateMatrix();
+    }
+
     // Modèle d'arme : suit le regard avec un léger retard, plus le recul.
     this.vmRecoil *= Math.exp(-11 * dt);
     const vm = this.viewModels[p.loadout.currentId];
@@ -486,6 +525,24 @@ export class Game {
       // Un léger biais de lacet donne du volume à l'arme sans coûter un polygone.
       vm.rotation.set(this.vmRecoil * 0.25 + reloadDip * 0.9, 0.10 * (1 - ads) - ads * 0.02, reloadDip * 0.5);
       vm.visible = p.alive;
+
+      // Flash de bouche : allumé par fireShot, éteint ici. L'étoile est un
+      // enfant de l'arme, donc elle suit déjà le recul et le balancement.
+      const flash = vm.userData.flash;
+      if (flash) {
+        if (this.vmFlash > 0) {
+          if (!flash.visible) {
+            // Nouvelle salve : on retire l'étoile pour que deux coups d'affilée
+            // ne se superposent pas exactement.
+            flash.rotation.z = Math.random() * Math.PI * 2;
+            flash.scale.setScalar(0.85 + Math.random() * 0.3);
+          }
+          flash.visible = true;
+          this.vmFlash -= dt;
+        } else if (flash.visible) {
+          flash.visible = false;
+        }
+      }
     }
   }
 
