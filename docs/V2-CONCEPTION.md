@@ -521,9 +521,12 @@ Aucune refonte. Le jeu reste jouable à chaque étape.
    `exposure` par carte dans `maps.js`. Effet immédiat sur toutes les cartes.
 2. **Ciel en dégradé.** Un `SphereGeometry` inversé à couleur par sommet, deux teintes lues dans
    la carte. Ajouté dans `_setupWorld`, un draw call.
-3. **Occlusion ambiante cuite.** Dans la boucle de `buildWorld`, après le calcul de chaque sommet,
-   une passe d'assombrissement selon l'occlusion locale. C'est le changement qui transforme le plus
-   le rendu, et il ne coûte rien à l'exécution.
+3. ~~**Occlusion ambiante cuite.**~~ **Fait.** `buildWorld` construit la collision d'abord, puis
+   découpe chaque face en quads d'au plus `aoTile` mètres et assombrit chaque nœud selon le solide
+   qui l'entoure (8 sondes `collision.overlaps`, plus un test grossier qui évite les sondes en
+   terrain dégagé). La finesse devient un réglage de `QUALITY` : 1,7 m en `bas`, 0,9 m en `haut`.
+   Mesuré : 29 à 98 ms de construction, 8,7k à 56k triangles selon la carte et le préréglage,
+   toujours **un seul draw call**, graphe de navigation inchangé (277 / 613 / 340 / 726 nœuds).
 4. **Flash de bouche.** Nouveau pool dans `effects.js`, appelé depuis `fireShot`, avec une variante
    dans la scène du modèle d'arme.
 5. **Ombres de contact.** Un maillage unique de quads, mis à jour depuis la boucle de `game.js`.

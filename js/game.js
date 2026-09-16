@@ -75,7 +75,7 @@ export class Game {
 
   _setupWorld() {
     this.mapData = buildMapData(this.opts.map);
-    this.world = buildWorld(this.mapData);
+    this.world = buildWorld(this.mapData, this.quality);
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(this.mapData.sky);

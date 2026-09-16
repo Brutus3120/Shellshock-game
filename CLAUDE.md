@@ -68,6 +68,15 @@ Ce sont les endroits où une modification « évidente » casse silencieusement 
 - **Un seul draw call pour le décor.** `world.js` fusionne toutes les boîtes d'une carte en une
   `BufferGeometry` unique, couleur par sommet, `MeshLambertMaterial({vertexColors:true})`.
   Ajouter un mesh séparé par bâtiment est la façon la plus rapide de perdre le budget GPU.
+- **L'occlusion ambiante est cuite dans les sommets**, à la construction de la carte. Chaque face
+  est découpée en quads d'au plus `aoTile` mètres (`QUALITY` dans `config.js`) et chaque nœud de
+  cette grille est assombri selon le solide qui l'entoure, sondé par `collision.overlaps`. Coût au
+  rendu : zéro, la couleur de sommet est déjà lue par le shader. Trois conséquences à connaître :
+  la collision doit être construite **avant** la géométrie (l'AO l'interroge) ; une carte compte
+  désormais des dizaines de milliers de triangles au lieu de quelques centaines, ce qui reste un
+  seul draw call ; et baisser `aoTile` resserre les ombres de contact en multipliant les triangles
+  par le carré du rapport. Une face ne peut pas être plus sombre entre deux de ses sommets : c'est
+  toute la raison de la subdivision.
 - **Collision purement AABB.** Pas de mesh de collision, pas de moteur physique. Le relief est
   fait d'escaliers de boîtes, franchis par un *step-up* automatique de 0,62 m résolu par
   recherche binaire dans `moveActor`. Une rampe inclinée ne serait pas gérée.
@@ -101,7 +110,8 @@ Ce sont les endroits où une modification « évidente » casse silencieusement 
 |---|---|
 | Équilibrer une arme, la vie, la vitesse | `js/config.js` |
 | Rendre les bots plus durs | `DIFFICULTIES` dans `js/config.js` |
-| Gagner des FPS | `QUALITY` dans `js/config.js` (`renderScale`, `fogFar`) |
+| Gagner des FPS | `QUALITY` dans `js/config.js` (`renderScale`, `fogFar`, `aoTile`) |
+| Régler la netteté des ombres de contact | `aoTile` dans `QUALITY`, constantes `AO_*` de `js/world.js` |
 | Modifier ou ajouter une carte | `js/maps.js` (helpers `B`, `perimeter`, `stairs`, `building`) |
 | Comportement des bots | `js/bots.js` (`sense` / `think` / `aim` / `move`) |
 | Placement de l'arme à l'écran | `_setupViewModel` dans `js/game.js` |

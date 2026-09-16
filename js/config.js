@@ -136,11 +136,19 @@ export const DIFFICULTIES = {
   },
 };
 
-/** Presets graphiques. Le préréglage "bas" vise les PC sans GPU dédié. */
+/**
+ * Presets graphiques. Le préréglage "bas" vise les PC sans GPU dédié.
+ *
+ * `aoTile` est la finesse de l'occlusion ambiante cuite dans le décor (voir
+ * world.js) : c'est le côté maximal d'un quad, en mètres. Plus il est petit,
+ * plus les ombres de contact sont nettes — et plus la carte compte de
+ * triangles. Comme la géométrie est construite une fois par partie, ce réglage
+ * ne coûte rien pendant le jeu ; il fixe seulement le budget géométrique.
+ */
 export const QUALITY = {
-  bas:    { id: 'bas',    label: 'Bas',    renderScale: 0.65, shadows: false, fogFar: 90,  particles: 0.4, tracers: true },
-  moyen:  { id: 'moyen',  label: 'Moyen',  renderScale: 0.85, shadows: false, fogFar: 140, particles: 1.0, tracers: true },
-  haut:   { id: 'haut',   label: 'Haut',   renderScale: 1.00, shadows: true,  fogFar: 220, particles: 1.4, tracers: true },
+  bas:    { id: 'bas',    label: 'Bas',    renderScale: 0.65, shadows: false, fogFar: 90,  particles: 0.4, tracers: true, aoTile: 1.7 },
+  moyen:  { id: 'moyen',  label: 'Moyen',  renderScale: 0.85, shadows: false, fogFar: 140, particles: 1.0, tracers: true, aoTile: 1.2 },
+  haut:   { id: 'haut',   label: 'Haut',   renderScale: 1.00, shadows: true,  fogFar: 220, particles: 1.4, tracers: true, aoTile: 0.9 },
 };
 
 export const PICKUP = {
