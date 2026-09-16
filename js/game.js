@@ -9,7 +9,7 @@
 import * as THREE from '../vendor/three.module.js';
 import { PLAYER, BOT_NAMES, BOT_COLORS, DIFFICULTIES, QUALITY, PICKUP, TICK_MAX, WEAPON_ORDER } from './config.js';
 import { buildMapData } from './maps.js';
-import { buildWorld, setupLights } from './world.js';
+import { buildWorld, buildSky, setupLights } from './world.js';
 import { Player } from './player.js';
 import { Bot } from './bots.js';
 import { Effects } from './effects.js';
@@ -80,11 +80,15 @@ export class Game {
     this.world = buildWorld(this.mapData, this.quality);
 
     this.scene = new THREE.Scene();
+    // Fond uni à la teinte de l'horizon : ce que voient les cartes couvertes,
+    // et ce que le dôme recouvre entièrement sur les autres.
     this.scene.background = new THREE.Color(this.mapData.sky);
     // Le brouillard commence tard : il sert à masquer la coupure lointaine,
     // pas à assombrir le combat rapproché.
     this.scene.fog = new THREE.Fog(this.mapData.fog, this.quality.fogFar * 0.45, this.quality.fogFar);
     this.scene.add(this.world.mesh);
+    this.sky = buildSky(this.mapData);
+    if (this.sky) this.scene.add(this.sky);
     if (this.quality.shadows) { this.world.mesh.receiveShadow = true; this.world.mesh.castShadow = true; }
     this.lights = setupLights(this.scene, this.mapData, this.quality.shadows);
 
@@ -495,6 +499,13 @@ export class Game {
     this.camera.rotation.y = p.viewYaw + sx;
     this.camera.rotation.x = p.viewPitch + sy;
     this.camera.rotation.z = bobX * 0.6;
+
+    // Le ciel suit la caméra sans tourner avec elle : le dégradé reste tenu par
+    // le monde, et l'horizon est à hauteur d'yeux où que le joueur aille.
+    if (this.sky) {
+      this.sky.position.copy(this.camera.position);
+      this.sky.updateMatrix();
+    }
 
     // Modèle d'arme : suit le regard avec un léger retard, plus le recul.
     this.vmRecoil *= Math.exp(-11 * dt);

@@ -93,6 +93,12 @@ Ce sont les endroits où une modification « évidente » casse silencieusement 
   le combat, donc aucun à-coup de GC. Ne pas remplacer par des créations à la volée.
 - **Le HUD est du DOM.** Il reste net quand `renderScale` descend à 0,65, et le GPU ne le touche
   jamais. Le passer en canvas coûterait des deux côtés.
+- **Le ciel est un dôme recentré sur la caméra.** `buildSky` fabrique une sphère retournée à
+  couleur de sommet — `sky` à l'horizon, `skyTop` au zénith — dessinée en premier, sans test ni
+  écriture de profondeur, et en `fog: false`. Trois conséquences : le rayon n'a aucun effet
+  visuel puisque le dôme suit la caméra à chaque image (`updateCamera`) ; le brouillard doit
+  garder la teinte de l'horizon, sinon le décor lointain cesse de s'y fondre ; et une carte
+  couverte omet `skyTop`, pour ne pas payer un draw call que le plafond cache.
 - **Deux scènes, deux caméras.** L'arme en vue subjective vit dans sa propre scène avec une
   caméra fov 55 **indépendante du FOV joueur**, rendue après `clearDepth()`. C'est ce qui
   l'empêche de traverser les murs et de se déformer au zoom.
@@ -118,6 +124,7 @@ Ce sont les endroits où une modification « évidente » casse silencieusement 
 | Équilibrer une arme, la vie, la vitesse | `js/config.js` |
 | Rendre les bots plus durs | `DIFFICULTIES` dans `js/config.js` |
 | Gagner des FPS | `QUALITY` dans `js/config.js` (`renderScale`, `fogFar`, `aoTile`) |
+| Changer l'ambiance d'une carte | `sky`, `skyTop`, `fog`, `sun`, `hemi` dans `js/maps.js` |
 | Régler la netteté des ombres de contact | `aoTile` dans `QUALITY`, constantes `AO_*` de `js/world.js` |
 | Modifier ou ajouter une carte | `js/maps.js` (helpers `B`, `perimeter`, `stairs`, `building`) |
 | Comportement des bots | `js/bots.js` (`sense` / `think` / `aim` / `move`) |

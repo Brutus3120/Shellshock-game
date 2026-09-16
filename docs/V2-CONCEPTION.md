@@ -519,8 +519,14 @@ Aucune refonte. Le jeu reste jouable à chaque étape.
 
 1. **Tone mapping et exposition par carte.** Trois lignes dans `_setupRenderer`, un champ
    `exposure` par carte dans `maps.js`. Effet immédiat sur toutes les cartes.
-2. **Ciel en dégradé.** Un `SphereGeometry` inversé à couleur par sommet, deux teintes lues dans
-   la carte. Ajouté dans `_setupWorld`, un draw call.
+2. ~~**Ciel en dégradé.**~~ **Fait.** Sphère retournée à couleur de sommet, recentrée sur la
+   caméra à chaque image et dessinée avant tout le reste sans test de profondeur : le rayon n'a
+   donc aucun effet visuel, et le ciel ne peut être ni atteint ni traversé. Deux teintes par
+   carte — `sky` devient l'horizon, `skyTop` le zénith. Le brouillard garde la teinte de
+   l'horizon, donc le décor lointain se fond dans le bas du ciel au lieu de s'arrêter net.
+   Le bunker, couvert, ne déclare pas `skyTop` : pas de dôme du tout. Mesuré sur les quatre
+   cartes : **+1 draw call et +480 triangles** sur les trois cartes ouvertes, rien sur le bunker,
+   aucune allocation en jeu, graphe de navigation inchangé (277 / 613 / 340 / 726 nœuds).
 3. ~~**Occlusion ambiante cuite.**~~ **Fait.** `buildWorld` construit la collision d'abord, puis
    découpe chaque face en quads d'au plus `aoTile` mètres et assombrit chaque nœud selon le solide
    qui l'entoure (8 sondes `collision.overlaps`, plus un test grossier qui évite les sondes en

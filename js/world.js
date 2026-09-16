@@ -296,6 +296,81 @@ function buildNav(collision, size, sampleY) {
 }
 
 /**
+ * Ciel en dégradé : une sphère retournée, colorée par sommet.
+ *
+ * Une couleur de fond unie aplatit les cartes extérieures — le décor s'arrête
+ * net sur un mur de peinture, et une carte à ciel ouvert ressemble à une boîte.
+ * Un dégradé lui rend un haut et un bas pour un seul draw call et quelques
+ * centaines de triangles, sans texture ni shader à écrire : la couleur de
+ * sommet suffit, et `MeshBasicMaterial` ignore les deux lumières.
+ *
+ * Trois choix à ne pas défaire :
+ *   - la sphère est recentrée sur la caméra à chaque image (`updateCamera` dans
+ *     `game.js`). Le rayon n'a donc aucun effet visuel — seule la direction du
+ *     regard compte — et le ciel ne peut être ni atteint ni traversé ;
+ *   - elle est dessinée en premier (`renderOrder = -1`), sans test ni écriture
+ *     de profondeur : elle repeint le fond, tout le reste passe par-dessus ;
+ *   - `fog: false`, sinon le brouillard reteint le ciel de sa propre couleur et
+ *     le dégradé s'efface. C'est l'inverse qui est voulu : le brouillard porte
+ *     la teinte de l'horizon (`fog` et `sky` sont la même valeur dans chaque
+ *     carte), donc le décor lointain se fond dans le bas du ciel.
+ *
+ * Une carte couverte ne déclare pas `skyTop` : pas de dôme, pas de draw call,
+ * pour un dégradé que personne ne verrait sous un plafond.
+ */
+const SKY_RADIUS = 10;    // sans effet visuel : simplement entre les deux plans de la caméra
+const SKY_SEG = 16;       // 16 × 16 = 480 triangles, assez pour un dégradé sans bandes
+const SKY_CURVE = 0.62;   // < 1 : le dégradé se resserre près de l'horizon
+const SKY_UNDER = 0.5;    // assombrissement au nadir, pour que le sol ne flotte pas
+
+export function buildSky(mapData) {
+  if (!mapData.skyTop) return null;
+
+  const geo = new THREE.SphereGeometry(SKY_RADIUS, SKY_SEG, SKY_SEG);
+  // Ni normales ni UV : le matériau basique n'en lit aucune, et les garder
+  // reviendrait à téléverser deux attributs morts.
+  geo.deleteAttribute('normal');
+  geo.deleteAttribute('uv');
+
+  const pos = geo.getAttribute('position');
+  const colors = new Float32Array(pos.count * 3);
+  // setHex convertit sRGB → linéaire, comme pour la géométrie de la carte.
+  const top = new THREE.Color().setHex(mapData.skyTop);
+  const low = new THREE.Color().setHex(mapData.sky);
+
+  for (let i = 0; i < pos.count; i++) {
+    const t = pos.getY(i) / SKY_RADIUS;   // -1 au nadir, 0 à l'horizon, 1 au zénith
+    const k = Math.pow(Math.abs(t), SKY_CURVE);
+    const j = i * 3;
+    if (t >= 0) {
+      colors[j]     = low.r + (top.r - low.r) * k;
+      colors[j + 1] = low.g + (top.g - low.g) * k;
+      colors[j + 2] = low.b + (top.b - low.b) * k;
+    } else {
+      // Sous l'horizon : la teinte de l'horizon assombrie. On ne la voit que
+      // depuis un toit, au-delà du bord d'une carte.
+      const d = 1 - SKY_UNDER * k;
+      colors[j] = low.r * d; colors[j + 1] = low.g * d; colors[j + 2] = low.b * d;
+    }
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+  const mat = new THREE.MeshBasicMaterial({
+    vertexColors: true,
+    side: THREE.BackSide,   // on regarde la sphère depuis l'intérieur
+    fog: false,
+    depthTest: false,
+    depthWrite: false,
+  });
+
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.renderOrder = -1;
+  mesh.frustumCulled = false;    // toujours autour de la caméra, donc toujours visible
+  mesh.matrixAutoUpdate = false; // recalculée à la main quand la caméra bouge
+  return mesh;
+}
+
+/**
  * Éclairage : au plus deux sources, jamais plus. C'est un choix de performance
  * (chaque lumière supplémentaire recompile les matériaux et coûte à chaque pixel).
  * Les facteurs ci-dessous compensent l'éclairage « physique » de three.js,
