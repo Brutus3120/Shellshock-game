@@ -59,6 +59,10 @@ js/
   hud.js          barre de vie, munitions, score, killfeed, minimap
   audio.js        SFX synthétisés à la volée en WebAudio
   game.js         le match : monde, acteurs, tir, caméra, rendu, classement
+tools/            vérification (développement seulement, voir tools/README.md)
+  geometrie.mjs   coût géométrique des cartes, sans navigateur
+  simulation.mjs  partie de 60 s par carte, dans Chromium
+  captures.mjs    images à caméra fixe, pour comparer un avant/après
 ```
 
 ## Invariants porteurs
@@ -68,6 +72,15 @@ Ce sont les endroits où une modification « évidente » casse silencieusement 
 - **Un seul draw call pour le décor.** `world.js` fusionne toutes les boîtes d'une carte en une
   `BufferGeometry` unique, couleur par sommet, `MeshLambertMaterial({vertexColors:true})`.
   Ajouter un mesh séparé par bâtiment est la façon la plus rapide de perdre le budget GPU.
+- **L'occlusion ambiante est cuite dans les sommets**, à la construction de la carte. Chaque face
+  est découpée en quads d'au plus `aoTile` mètres (`QUALITY` dans `config.js`) et chaque nœud de
+  cette grille est assombri selon le solide qui l'entoure, sondé par `collision.overlaps`. Coût au
+  rendu : zéro, la couleur de sommet est déjà lue par le shader. Trois conséquences à connaître :
+  la collision doit être construite **avant** la géométrie (l'AO l'interroge) ; une carte compte
+  désormais des dizaines de milliers de triangles au lieu de quelques centaines, ce qui reste un
+  seul draw call ; et baisser `aoTile` resserre les ombres de contact en multipliant les triangles
+  par le carré du rapport. Une face ne peut pas être plus sombre entre deux de ses sommets : c'est
+  toute la raison de la subdivision.
 - **Collision purement AABB.** Pas de mesh de collision, pas de moteur physique. Le relief est
   fait d'escaliers de boîtes, franchis par un *step-up* automatique de 0,62 m résolu par
   recherche binaire dans `moveActor`. Une rampe inclinée ne serait pas gérée.
@@ -89,8 +102,15 @@ Ce sont les endroits où une modification « évidente » casse silencieusement 
   l'empêche de traverser les murs et de se déformer au zoom.
 - **Éclairage physique r169.** Depuis r155 l'intensité 1 est très sombre : `HEMI_GAIN = 3.4` et
   `SUN_GAIN = 3.6` compensent. Deux lumières au total, jamais plus.
-- **Additive blending obligatoire** sur traceurs et étincelles, sinon ils sortent en traits
-  sombres sur fond clair.
+- **Additive blending obligatoire** sur traceurs, étincelles et flashs de bouche, sinon ils
+  sortent en traits sombres sur fond clair.
+- **Le flash de bouche est une étoile à couleur de sommet** : un éventail de triangles dont le
+  centre porte la couleur et dont **tout le pourtour est noir**. En additif le noir ne dessine
+  rien, donc ce noir *est* le dégradé — l'« éclaircir » rendrait un polygone plat et opaque. Même
+  silhouette des deux côtés (`FLASH_RADII` dans `weapons.js`), mais deux implantations : le joueur
+  a la sienne accrochée à son arme, donc elle suit le recul sans code ; les bots passent par un
+  pool de `effects.js`, orienté face à la caméra à l'allumage. `VM_FLASH_SCALE` réduit la première :
+  les deux caméras ne regardent pas à la même distance.
 - **Pointer lock exige un geste utilisateur** et impose un délai après Échap — d'où l'écran
   « cliquer pour jouer ». `#overlay` est en `pointer-events:none`, seuls les `.screen` captent
   les clics ; l'inverse avale les clics destinés au canvas.
@@ -101,7 +121,8 @@ Ce sont les endroits où une modification « évidente » casse silencieusement 
 |---|---|
 | Équilibrer une arme, la vie, la vitesse | `js/config.js` |
 | Rendre les bots plus durs | `DIFFICULTIES` dans `js/config.js` |
-| Gagner des FPS | `QUALITY` dans `js/config.js` (`renderScale`, `fogFar`) |
+| Gagner des FPS | `QUALITY` dans `js/config.js` (`renderScale`, `fogFar`, `aoTile`) |
+| Régler la netteté des ombres de contact | `aoTile` dans `QUALITY`, constantes `AO_*` de `js/world.js` |
 | Modifier ou ajouter une carte | `js/maps.js` (helpers `B`, `perimeter`, `stairs`, `building`) |
 | Comportement des bots | `js/bots.js` (`sense` / `think` / `aim` / `move`) |
 | Placement de l'arme à l'écran | `_setupViewModel` dans `js/game.js` |
@@ -117,10 +138,12 @@ d'erreur numéro un quand on ajoute une boîte.
   est synthétisé. Ne pas importer de contenu d'un jeu existant.
 - **Ajouter une dépendance est un choix à justifier**, pas un réflexe. Aujourd'hui il y en a une
   seule, vendorée.
-- **Vérifier dans un vrai navigateur**, pas par lecture. Le harnais dispose de Chromium
-  (`PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers`, lancer avec `--use-gl=angle
-  --use-angle=swiftshader --enable-unsafe-swiftshader`). Le test qui a de la valeur est une
-  simulation de 60 s sur chaque carte : on regarde le nombre d'éliminations, les bots bloqués au
-  spawn, les acteurs passés sous le sol, et la console.
+- **Vérifier dans un vrai navigateur**, pas par lecture. Les outils de `tools/` le font :
+  `node tools/geometrie.mjs` (deux secondes, sans navigateur) puis `node tools/simulation.mjs`
+  (60 s de jeu par carte dans Chromium — éliminations, bots bloqués au spawn, acteurs passés sous
+  le sol, draw calls du décor, console). `tools/captures.mjs` compare un avant/après en images.
+  Ils sont facultatifs et réservés au développement : le jeu, lui, n'a toujours aucune dépendance
+  et se lance avec `play.sh`. Voir `tools/README.md`, qui documente notamment pourquoi
+  `renderer.info` ment si on le lit après coup.
 - **Le projet doit rester petit et lisible.** C'est une exigence du cahier des charges, pas un
   effet de bord.
