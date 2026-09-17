@@ -86,6 +86,13 @@ Ce sont les endroits où une modification « évidente » casse silencieusement 
   (`game.js`) code en dur les 0,30 m et 1,18 m. Ajouter une pièce à un bot, c'est ajouter une
   ligne à `bodyParts` ou `armParts`, jamais un `Mesh` de plus. La couleur passe par les sommets
   parce qu'un groupe mélange des teintes ; le matériau, lui, reste propre à chaque bot.
+- **Le rendu passe par une courbe filmique, avec une exposition par carte.**
+  `ACESFilmicToneMapping` est posé dans `_setupRenderer`, mais `toneMappingExposure` dans
+  `_setupWorld` : le constructeur monte le renderer avant la carte, `mapData` n'existe pas encore
+  à l'autre endroit. La courbe creuse les noirs, d'où un `exposure` par carte dans `maps.js`
+  (1,10 à 1,22) calibré à la capture, et non un réglage global. Attention : `scene.background`
+  est une couleur d'effacement du framebuffer et **échappe** à cette courbe, alors que le
+  brouillard, calculé dans le shader, la subit.
 - **Collision purement AABB.** Pas de mesh de collision, pas de moteur physique. Le relief est
   fait d'escaliers de boîtes, franchis par un *step-up* automatique de 0,62 m résolu par
   recherche binaire dans `moveActor`. Une rampe inclinée ne serait pas gérée.
@@ -127,6 +134,7 @@ Ce sont les endroits où une modification « évidente » casse silencieusement 
 | Équilibrer une arme, la vie, la vitesse | `js/config.js` |
 | Rendre les bots plus durs | `DIFFICULTIES` dans `js/config.js` |
 | Gagner des FPS | `QUALITY` dans `js/config.js` (`renderScale`, `fogFar`, `aoTile`) |
+| Régler l'ambiance d'une carte | `exposure` et `fog` dans `js/maps.js` |
 | Régler la netteté des ombres de contact | `aoTile` dans `QUALITY`, constantes `AO_*` de `js/world.js` |
 | Modifier ou ajouter une carte | `js/maps.js` (helpers `B`, `perimeter`, `stairs`, `building`) |
 | Comportement des bots | `js/bots.js` (`sense` / `think` / `aim` / `move`) |

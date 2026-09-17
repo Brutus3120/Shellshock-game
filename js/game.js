@@ -71,12 +71,17 @@ export class Game {
     });
     this.renderer.setClearColor(0x000000, 1);
     this.renderer.autoClear = false;
+    // Courbe filmique : les hautes lumières roulent au lieu de brûler, et les
+    // teintes saturées cessent de virer en s'éclairant. L'exposition, elle, est
+    // posée par carte dans _setupWorld — mapData n'existe pas encore ici.
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.shadowMap.enabled = this.quality.shadows;
     if (this.quality.shadows) this.renderer.shadowMap.type = THREE.PCFShadowMap;
   }
 
   _setupWorld() {
     this.mapData = buildMapData(this.opts.map);
+    this.renderer.toneMappingExposure = this.mapData.exposure ?? 1;
     this.world = buildWorld(this.mapData, this.quality);
 
     this.scene = new THREE.Scene();
