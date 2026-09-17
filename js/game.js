@@ -9,7 +9,7 @@
 import * as THREE from '../vendor/three.module.js';
 import { PLAYER, BOT_NAMES, BOT_COLORS, DIFFICULTIES, QUALITY, PICKUP, TICK_MAX, WEAPON_ORDER } from './config.js';
 import { buildMapData } from './maps.js';
-import { buildWorld, setupLights } from './world.js';
+import { buildWorld, buildSky, setupLights } from './world.js';
 import { Player } from './player.js';
 import { Bot } from './bots.js';
 import { Effects } from './effects.js';
@@ -91,6 +91,12 @@ export class Game {
     this.scene.fog = new THREE.Fog(this.mapData.fog, this.quality.fogFar * 0.45, this.quality.fogFar);
     this.scene.add(this.world.mesh);
     if (this.quality.shadows) { this.world.mesh.receiveShadow = true; this.world.mesh.castShadow = true; }
+
+    // Ciel : seulement pour les cartes qui en déclarent un. Une carte couverte
+    // comme le Bunker n'en voit jamais, ce serait un draw call et un écran de
+    // remplissage pour rien.
+    this.sky = this.mapData.skyTop ? buildSky(this.mapData, this.quality.fogFar) : null;
+    if (this.sky) this.scene.add(this.sky);
     this.lights = setupLights(this.scene, this.mapData, this.quality.shadows);
 
     this.camera = new THREE.PerspectiveCamera(this.settings.fov, 1, 0.08, this.quality.fogFar + 40);
@@ -542,6 +548,10 @@ export class Game {
 
   render() {
     const r = this.renderer;
+    // Le ciel suit la caméra : sinon le joueur en sort au bord d'une grande
+    // carte. Ici et non dans updateCamera, pour rester juste même en pause,
+    // quand la simulation ne tourne plus mais que l'on dessine encore.
+    if (this.sky) this.sky.position.copy(this.camera.position);
     r.clear();
     r.render(this.scene, this.camera);
     if (this.player.alive) {

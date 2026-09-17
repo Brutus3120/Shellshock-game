@@ -104,6 +104,9 @@ function mapArene() {
     tagline: 'Ouverte · rapide',
     sky: 0x2a3142, fog: 0x2a3142, ground: C.sol,
     exposure: 1.10,          // sol clair et ciel de nuit : la courbe suffit, on ne rattrape qu'un peu les noirs
+    // Le bas du ciel EST la couleur de brouillard : c'est ce qui rend le
+    // raccord à l'horizon invisible (voir buildSky).
+    skyBottom: 0x2a3142, skyTop: 0x141b2e,
     sampleY: 40,
     sun: { color: 0xffe7c4, intensity: 1.05, dir: [0.4, 1, 0.25] },
     hemi: { sky: 0x6f8fb5, ground: 0x34302c, intensity: 0.85 },
@@ -169,6 +172,9 @@ function mapQuartier() {
     tagline: 'Bâtiments · verticalité',
     sky: 0x3b4050, fog: 0x3b4050, ground: C.sol,
     exposure: 1.22,          // la carte la plus grise : sans rattrapage elle perd 9 % de luminance
+    // Le bas du ciel EST la couleur de brouillard : c'est ce qui rend le
+    // raccord à l'horizon invisible (voir buildSky).
+    skyBottom: 0x3b4050, skyTop: 0x232a3a,
     sampleY: 40,
     sun: { color: 0xfff0d0, intensity: 1.0, dir: [-0.35, 1, 0.4] },
     hemi: { sky: 0x8aa0bd, ground: 0x3a352e, intensity: 0.8 },
@@ -317,6 +323,9 @@ function mapCrete() {
     tagline: 'Relief · hauteurs',
     sky: 0x6b5a44, fog: 0x6b5a44, ground: C.sol,
     exposure: 1.10,          // plein soleil : le gain est surtout dans le rouleau des hautes lumières
+    // Le bas du ciel EST la couleur de brouillard : c'est ce qui rend le
+    // raccord à l'horizon invisible (voir buildSky).
+    skyBottom: 0x6b5a44, skyTop: 0x3b4a66,
     sampleY: 40,
     sun: { color: 0xffd9a0, intensity: 1.15, dir: [0.5, 0.9, -0.35] },
     hemi: { sky: 0xc9a878, ground: 0x4a3c28, intensity: 0.75 },

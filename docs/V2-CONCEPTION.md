@@ -540,8 +540,17 @@ Aucune refonte. Le jeu reste jouable à chaque étape.
    (1,10 / 1,22 / 1,20 / 1,10), calibré sur des captures au même point de vue pour retrouver la
    luminance perçue d'origine — la courbe creuse les noirs, le rattrapage les récupère. Mesuré :
    coût d'image nul (25,3 / 26,7 ips contre 25,8 / 26,1 sans).
-2. **Ciel en dégradé.** Un `SphereGeometry` inversé à couleur par sommet, deux teintes lues dans
-   la carte. Ajouté dans `_setupWorld`, un draw call.
+2. ~~**Ciel en dégradé.**~~ **Fait.** `SphereGeometry` retournée, couleur par sommet, deux teintes
+   par carte (`skyBottom` / `skyTop`), **un draw call** — et zéro sur `bunker`, qui n'en déclare
+   pas : une carte couverte ne voit jamais son ciel. Le dégradé ne vit que dans l'hémisphère
+   supérieur, sinon l'horizon serait déjà à 61 % de la teinte du zénith et le raccord se verrait.
+   Ce ciel n'est pas qu'une décoration : il **répare** l'étape 1. `scene.background` est une
+   couleur d'effacement, elle ne passe pas par le tone mapping, alors que le brouillard y passe —
+   mesuré sur l'Arène, le mur lointain tombe de (17,27,44) à (3,11,27) pendant que le fond reste
+   à (42,49,66). Un ciel en géométrie subit la même courbe que le brouillard vers lequel il se
+   raccorde. Coût : environ 12 % d'images par seconde sous swiftshader, qui est un rasteriseur
+   logiciel où le remplissage plein écran coûte cher ; sur un GPU, une passe plate de la taille de
+   l'écran est de l'ordre de 2 % du budget d'image.
 3. ~~**Occlusion ambiante cuite.**~~ **Fait.** `buildWorld` construit la collision d'abord, puis
    découpe chaque face en quads d'au plus `aoTile` mètres et assombrit chaque nœud selon le solide
    qui l'entoure (8 sondes `collision.overlaps`, plus un test grossier qui évite les sondes en
@@ -680,8 +689,8 @@ Les dix premières choses à faire, dans l'ordre, en évitant de refaire ce qui 
    changement le plus visible du lot.
 2. **Flash de bouche poolé** (`effects.js`, `game.js`). Ce qui manque le plus à la sensation de tir.
 3. ~~**Tone mapping ACES + exposition par carte**~~ (`game.js`, `maps.js`). **Fait**, coût nul.
-4. **Ciel en dégradé** (`world.js`). Un draw call, et les cartes extérieures cessent d'être des
-   boîtes.
+4. ~~**Ciel en dégradé**~~ (`world.js`). **Fait** : un draw call sur les trois cartes ouvertes,
+   zéro sur le Bunker, et les cartes extérieures cessent d'être des boîtes.
 5. ~~**Fusion des maillages de bots**~~ (`bots.js`). **Fait** : 55 draw calls récupérés à onze
    bots (99 → 44), qui financent tout le reste.
 6. **Ombres de contact** (`effects.js`). Ancre les acteurs au sol sur tous les préréglages, y

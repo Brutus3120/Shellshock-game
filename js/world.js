@@ -372,6 +372,62 @@ function buildNav(collision, size, sampleY) {
 const HEMI_GAIN = 3.4;
 const SUN_GAIN = 3.6;
 
+/**
+ * Ciel en dégradé : une sphère retournée, deux teintes lues dans la carte.
+ *
+ * Il ne remplace pas seulement un aplat par un dégradé, il répare un raccord.
+ * `scene.background` est une couleur d'effacement du framebuffer : elle ne
+ * passe PAS par le tone mapping, alors que le brouillard, calculé dans le
+ * shader, y passe. Depuis l'étape 3 le décor lointain converge donc vers une
+ * couleur que le fond ne suit plus — un mur mesuré à (17,27,44) avant, (3,11,27)
+ * après, pour un fond resté à (42,49,66). Un ciel en géométrie est tone-mappé
+ * comme le reste : le raccord redevient invisible, à condition que `skyBottom`
+ * soit la couleur de brouillard de la carte.
+ *
+ * `MeshBasicMaterial` et non Lambert : le ciel ne s'éclaire pas, l'invariant
+ * des deux lumières tient.
+ *
+ * Il est dessiné EN DERNIER de la passe opaque, et non en premier comme un fond
+ * classique : il teste le tampon de profondeur sans y écrire, donc un vrai GPU
+ * rejette avant ombrage les pixels déjà couverts par le décor. Mesuré sous
+ * swiftshader, qui n'a pas de rejet précoce utile, la différence est nulle
+ * (22,2 / 22,5 contre 22,3 / 23,8 ips) : on garde l'ordre pour le matériel réel,
+ * sans en attendre quoi que ce soit ici. Les effets additifs passent après, dans
+ * la passe transparente, donc ils restent visibles devant le ciel.
+ */
+export function buildSky(mapData, fogFar) {
+  const radius = fogFar + 20;             // au-delà du brouillard, en deçà du plan lointain
+  const geo = new THREE.SphereGeometry(radius, 16, 10);
+  const pos = geo.attributes.position;
+  const colors = new Float32Array(pos.count * 3);
+
+  const top = new THREE.Color().setHex(mapData.skyTop);
+  const bottom = new THREE.Color().setHex(mapData.skyBottom);
+  for (let i = 0; i < pos.count; i++) {
+    // Le dégradé ne vit que dans l'hémisphère SUPÉRIEUR : 0 pile à l'horizon,
+    // 1 au zénith, et tout ce qui est sous l'horizon reste à `skyBottom`.
+    // C'est ce qui garantit la propriété qui fait tout l'intérêt de ce ciel —
+    // la ligne d'horizon a exactement la couleur vers laquelle le brouillard
+    // converge. Paramétrer sur la sphère entière la mettrait déjà à 61 % du
+    // haut, et le raccord se verrait.
+    const t = Math.pow(Math.max(0, pos.getY(i)) / radius, 0.8);
+    const o = i * 3;
+    colors[o] = bottom.r + (top.r - bottom.r) * t;
+    colors[o + 1] = bottom.g + (top.g - bottom.g) * t;
+    colors[o + 2] = bottom.b + (top.b - bottom.b) * t;
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  geo.deleteAttribute('normal');          // inutile à un matériau Basic
+  geo.deleteAttribute('uv');
+
+  const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+    vertexColors: true, side: THREE.BackSide, fog: false, depthWrite: false,
+  }));
+  mesh.frustumCulled = false;
+  mesh.renderOrder = 1000;                // après le décor, avant les effets additifs
+  return mesh;
+}
+
 export function setupLights(scene, mapData, shadows) {
   const hemi = new THREE.HemisphereLight(mapData.hemi.sky, mapData.hemi.ground, mapData.hemi.intensity * HEMI_GAIN);
   scene.add(hemi);
