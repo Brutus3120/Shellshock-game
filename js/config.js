@@ -39,7 +39,13 @@ export const BOT = {
   eyeOffset: 0.22,
 };
 
-/** Trois armes aux rôles nettement différents. */
+/**
+ * Trois armes aux rôles nettement différents.
+ *
+ * `muzzle` décrit le flash de bouche : rayon en mètres, couleur et durée en
+ * secondes. C'est ce qui donne à chaque arme son départ de coup — le Broyeur-12
+ * crache large et orangé, le Lynx-M sec et blanc.
+ */
 export const WEAPONS = {
   rafale: {
     id: 'rafale',
@@ -63,6 +69,7 @@ export const WEAPONS = {
     adsFovMul: 0.80,
     color: 0x6fd3ff,
     body: [0.10, 0.13, 0.62],
+    muzzle: { size: 0.36, color: 0xffe9a8, life: 0.045 },
   },
   lynx: {
     id: 'lynx',
@@ -86,6 +93,7 @@ export const WEAPONS = {
     adsFovMul: 0.42,
     color: 0xffd166,
     body: [0.09, 0.12, 0.86],
+    muzzle: { size: 0.46, color: 0xfff3c0, life: 0.065 },
   },
   broyeur: {
     id: 'broyeur',
@@ -109,6 +117,7 @@ export const WEAPONS = {
     adsFovMul: 0.92,
     color: 0xff7a6b,
     body: [0.12, 0.15, 0.58],
+    muzzle: { size: 0.58, color: 0xffc98a, life: 0.075 },
   },
 };
 
@@ -136,11 +145,19 @@ export const DIFFICULTIES = {
   },
 };
 
-/** Presets graphiques. Le préréglage "bas" vise les PC sans GPU dédié. */
+/**
+ * Presets graphiques. Le préréglage "bas" vise les PC sans GPU dédié.
+ *
+ * `aoTile` est la finesse de l'occlusion ambiante cuite dans le décor (voir
+ * world.js) : c'est le côté maximal d'un quad, en mètres. Plus il est petit,
+ * plus les ombres de contact sont nettes — et plus la carte compte de
+ * triangles. Comme la géométrie est construite une fois par partie, ce réglage
+ * ne coûte rien pendant le jeu ; il fixe seulement le budget géométrique.
+ */
 export const QUALITY = {
-  bas:    { id: 'bas',    label: 'Bas',    renderScale: 0.65, shadows: false, fogFar: 90,  particles: 0.4, tracers: true },
-  moyen:  { id: 'moyen',  label: 'Moyen',  renderScale: 0.85, shadows: false, fogFar: 140, particles: 1.0, tracers: true },
-  haut:   { id: 'haut',   label: 'Haut',   renderScale: 1.00, shadows: true,  fogFar: 220, particles: 1.4, tracers: true },
+  bas:    { id: 'bas',    label: 'Bas',    renderScale: 0.65, shadows: false, fogFar: 90,  particles: 0.4, tracers: true, aoTile: 1.7 },
+  moyen:  { id: 'moyen',  label: 'Moyen',  renderScale: 0.85, shadows: false, fogFar: 140, particles: 1.0, tracers: true, aoTile: 1.2 },
+  haut:   { id: 'haut',   label: 'Haut',   renderScale: 1.00, shadows: true,  fogFar: 220, particles: 1.4, tracers: true, aoTile: 0.9 },
 };
 
 export const PICKUP = {

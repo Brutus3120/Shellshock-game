@@ -15,8 +15,8 @@
 import * as THREE from '../vendor/three.module.js';
 import { BOT, WEAPONS, WEAPON_ORDER } from './config.js';
 import { moveActor } from './collision.js';
-import { Loadout } from './weapons.js';
-import { createBotWeaponMesh } from './weapons.js';
+import { Loadout, botWeaponBoxes } from './weapons.js';
+import { mergeBoxGeometry } from './world.js';
 
 const V = () => ({ x: 0, y: 0, z: 0 });
 
@@ -402,53 +402,73 @@ export class Bot {
 
 // ------------------------------------------------------------- modèle 3D ---
 
+const BOT_DARK = 0x2a2f38;      // bassin et jambes
+const BOT_VISOR = 0x12161c;     // fente de visière
+
+/** Torse, bassin, tête inclinée, visière — tout ce qui ne bouge pas tout seul. */
+function bodyParts(color) {
+  return [
+    { w: 0.62, h: 0.72, d: 0.36, x: 0, y: 1.02, z: 0, color },
+    { w: 0.50, h: 0.22, d: 0.32, x: 0, y: 0.66, z: 0, color: BOT_DARK },
+    { w: 0.38, h: 0.34, d: 0.36, x: 0, y: 1.56, z: 0, ry: 0.18, color },
+    { w: 0.30, h: 0.10, d: 0.06, x: 0, y: 1.58, z: -0.19, color: BOT_VISOR },
+  ];
+}
+
+/** Bras porte-arme : l'avant-bras, puis l'arme décalée à son point de montage. */
+function armParts(color) {
+  const parts = [{ w: 0.16, h: 0.16, d: 0.42, x: 0, y: 0, z: -0.16, color }];
+  for (const b of botWeaponBoxes(color)) {
+    parts.push({ ...b, y: b.y - 0.02, z: b.z - 0.30 });
+  }
+  return parts;
+}
+
 /**
  * Silhouette "low-poly" originale : un tronc anguleux, une tête cubique
- * inclinée, deux jambes, un bras porte-arme. Six boîtes au total.
+ * inclinée, deux jambes, un bras porte-arme. Neuf boîtes.
+ *
+ * Ces neuf boîtes tiennent en QUATRE maillages, parce qu'un `Mesh` est un draw
+ * call : à onze bots, neuf maillages chacun coûtaient 99 draw calls, contre 1
+ * pour la carte entière. Le découpage suit le mouvement et non l'anatomie —
+ * ne sont séparés que les morceaux qui doivent bouger l'un par rapport à
+ * l'autre : le buste, les deux jambes, le bras.
+ *
+ * Chaque groupe mélange des teintes (le buste porte la couleur du bot ET la
+ * visière, le bras porte la couleur du bot ET le canon), donc la couleur passe
+ * par les sommets, exactement comme pour le décor dans world.js. Un matériau
+ * unique par bot suffit alors pour ses quatre maillages.
  */
 function buildBotMesh(color) {
   const g = new THREE.Group();
-  const skin = new THREE.MeshLambertMaterial({ color });
-  const dark = new THREE.MeshLambertMaterial({ color: 0x2a2f38 });
-  const visor = new THREE.MeshLambertMaterial({ color: 0x12161c });
+  // Un matériau PAR BOT et non un seul pour tous : le flash de dégâts prévu
+  // ensuite fait monter l'émissive du bot touché, lui seul.
+  const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
 
-  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.72, 0.36), skin);
-  torso.position.set(0, 1.02, 0);
-  g.add(torso);
+  g.add(limb(bodyParts(color), mat, 0, 0, 0));
 
-  const hips = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.22, 0.32), dark);
-  hips.position.set(0, 0.66, 0);
-  g.add(hips);
-
+  // Jambes : pivot à la hanche, boîte décalée dessous. Une future rotation en X
+  // fera donc balancer la jambe autour de la hanche, et non glisser la boîte.
   for (const s of [-1, 1]) {
-    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.62, 0.24), dark);
-    leg.position.set(s * 0.15, 0.31, 0);
-    g.add(leg);
+    g.add(limb([{ w: 0.20, h: 0.62, d: 0.24, x: 0, y: -0.31, z: 0, color: BOT_DARK }],
+               mat, s * 0.15, 0.62, 0));
   }
 
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.34, 0.36), skin);
-  head.position.set(0, 1.56, 0);
-  head.rotation.y = 0.18;
-  g.add(head);
-
-  const vis = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.1, 0.06), visor);
-  vis.position.set(0, 1.58, -0.19);
-  g.add(vis);
-
   // Bras + arme, pivotant avec le tangage pour que la visée se lise de loin.
-  const arm = new THREE.Group();
-  arm.position.set(0.3, 1.18, 0);
-  const armMesh = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 0.42), skin);
-  armMesh.position.set(0, 0, -0.16);
-  arm.add(armMesh);
-  const wep = createBotWeaponMesh(color);
-  wep.position.set(0, -0.02, -0.3);
-  arm.add(wep);
+  // muzzlePosition (game.js) code en dur ces 0,30 m et 1,18 m.
+  const arm = limb(armParts(color), mat, 0.3, 1.18, 0);
   g.add(arm);
   g.userData.arm = arm;
 
   g.matrixAutoUpdate = true;
   return g;
+}
+
+/** Un maillage fusionné, posé sur son pivot. */
+function limb(parts, mat, x, y, z) {
+  const m = new THREE.Mesh(mergeBoxGeometry(parts), mat);
+  m.position.set(x, y, z);
+  return m;
 }
 
 function dist2D(a, b) { return Math.hypot(a.x - b.x, a.z - b.z); }

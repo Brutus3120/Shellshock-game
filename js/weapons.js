@@ -103,6 +103,59 @@ function box(w, h, d, color, x, y, z) {
   return m;
 }
 
+/**
+ * Silhouette du flash de bouche : un éventail de triangles autour d'un sommet
+ * central. Le centre porte la couleur, le pourtour est NOIR — en blending
+ * additif le noir est transparent, donc on obtient un dégradé radial doux et
+ * une silhouette en étoile sans le moindre octet de texture.
+ *
+ * Les rayons alternent long/court pour donner les branches. La même table sert
+ * au modèle en vue subjective (ci-dessous) et au pool de effects.js, pour que
+ * le flash d'un bot et celui du joueur soient la même forme.
+ */
+export const FLASH_SPOKES = 8;
+export const FLASH_RADII = [1.0, 0.44, 0.82, 0.40, 1.0, 0.44, 0.82, 0.40];
+
+/** Réduction du flash en vue subjective : deux caméras, deux distances. */
+const VM_FLASH_SCALE = 0.30;
+
+/** Indices d'un éventail : sommet 0 au centre, 1..FLASH_SPOKES au pourtour. */
+export function flashIndices(out, base, at) {
+  for (let s = 0; s < FLASH_SPOKES; s++) {
+    const a = base + 1 + s;
+    const b = base + 1 + ((s + 1) % FLASH_SPOKES);
+    out[at++] = base; out[at++] = a; out[at++] = b;
+  }
+  return at;
+}
+
+/** Étoile de flash prête à l'emploi, dans le plan XY. */
+function flashStar(color, size) {
+  const n = FLASH_SPOKES;
+  const pos = new Float32Array((n + 1) * 3);
+  const col = new Float32Array((n + 1) * 3);
+  const c = new THREE.Color(color);
+  col[0] = c.r; col[1] = c.g; col[2] = c.b;          // centre : pleine couleur
+  for (let s = 0; s < n; s++) {
+    const a = (s / n) * Math.PI * 2;
+    const r = FLASH_RADII[s] * size;
+    const o = (s + 1) * 3;
+    pos[o] = Math.cos(a) * r; pos[o + 1] = Math.sin(a) * r; pos[o + 2] = 0;
+    // pourtour laissé à zéro : c'est ce qui fait le dégradé.
+  }
+  const idx = new Uint16Array(n * 3);
+  flashIndices(idx, 0, 0);
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  geo.setIndex(new THREE.BufferAttribute(idx, 1));
+  return new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+    vertexColors: true, transparent: true, depthWrite: false,
+    blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+  }));
+}
+
 /** Arme vue à la première personne. Rendue par une caméra dédiée (voir game.js). */
 export function createViewModel(id) {
   const def = WEAPONS[id];
@@ -126,15 +179,39 @@ export function createViewModel(id) {
   led.material.emissive = new THREE.Color(def.color);
   led.material.emissiveIntensity = 1;
   g.add(led);
+
+  // Flash de bouche, à la pointe du canon (boîte de 0,5 centrée en
+  // -body[2] - 0.18, donc pointe en -(body[2] + 0.43)). Enfant de l'arme : il
+  // hérite gratuitement du recul, du balancement de marche et de la visée.
+  //
+  // `muzzle.size` est un rayon en mètres, calibré pour le flash vu de loin dans
+  // le monde. Ici la scène est rendue par la caméra d'arme, à moins de deux
+  // unités : à taille égale l'étoile mangerait la moitié de l'écran.
+  //
+  // Le canon s'arrête en -(body[2] + 0.43) : l'étoile se place JUSTE DEVANT.
+  // Deux centimètres derrière et l'embout du canon masque son cœur lumineux —
+  // ce qui ne se voit pas sur le large flash du Broyeur, mais escamote
+  // complètement celui de la Rafale.
+  const flash = flashStar(def.muzzle.color, def.muzzle.size * VM_FLASH_SCALE);
+  flash.position.set(0, 0.02, -(def.body[2] + 0.41));
+  flash.visible = false;
+  g.add(flash);
+  g.userData.flash = flash;
   return g;
 }
 
-/** Petite arme portée par les bots, vue de l'extérieur. */
-export function createBotWeaponMesh(color) {
-  const g = new THREE.Group();
-  g.add(box(0.09, 0.1, 0.55, 0x2b3038, 0, 0, -0.2));
-  g.add(box(0.06, 0.06, 0.14, color, 0, 0.06, -0.05));
-  return g;
+/**
+ * Petite arme portée par les bots, vue de l'extérieur — décrite en boîtes et
+ * non en `Mesh` : bots.js la fusionne dans la géométrie du bras. Les formes
+ * d'armes restent décrites ici, avec celles de la vue subjective.
+ *
+ * Repère de l'arme : le canon part vers -Z, l'origine est le point de montage.
+ */
+export function botWeaponBoxes(color) {
+  return [
+    { w: 0.09, h: 0.10, d: 0.55, x: 0, y: 0, z: -0.20, color: 0x2b3038 },
+    { w: 0.06, h: 0.06, d: 0.14, x: 0, y: 0.06, z: -0.05, color },
+  ];
 }
 
 export { WEAPON_ORDER };

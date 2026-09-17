@@ -49,7 +49,7 @@ js/
   settings.js     persistance des options dans localStorage
   config.js       TOUT l'équilibrage : joueur, armes, difficultés, qualité
   maps.js         les 4 cartes, décrites en listes de boîtes
-  world.js        fusion géométrique, lumières, graphe de navigation
+  world.js        fusion géométrique (décor et personnages), lumières, graphe de navigation
   collision.js    AABB, grille, raycast DDA, déplacement d'acteur
   player.js       état et physique du joueur
   input.js        clavier/souris, pointer lock (ZQSD + WASD + flèches)
@@ -68,6 +68,36 @@ Ce sont les endroits où une modification « évidente » casse silencieusement 
 - **Un seul draw call pour le décor.** `world.js` fusionne toutes les boîtes d'une carte en une
   `BufferGeometry` unique, couleur par sommet, `MeshLambertMaterial({vertexColors:true})`.
   Ajouter un mesh séparé par bâtiment est la façon la plus rapide de perdre le budget GPU.
+- **L'occlusion ambiante est cuite dans les sommets**, à la construction de la carte. Chaque face
+  est découpée en quads d'au plus `aoTile` mètres (`QUALITY` dans `config.js`) et chaque nœud de
+  cette grille est assombri selon le solide qui l'entoure, sondé par `collision.overlaps`. Coût au
+  rendu : zéro, la couleur de sommet est déjà lue par le shader. Trois conséquences à connaître :
+  la collision doit être construite **avant** la géométrie (l'AO l'interroge) ; une carte compte
+  désormais des dizaines de milliers de triangles au lieu de quelques centaines, ce qui reste un
+  seul draw call ; et baisser `aoTile` resserre les ombres de contact en multipliant les triangles
+  par le carré du rapport. Une face ne peut pas être plus sombre entre deux de ses sommets : c'est
+  toute la raison de la subdivision.
+- **Un bot est quatre maillages, pas neuf.** `buildBotMesh` fusionne ses neuf boîtes en quatre
+  géométries à couleur par sommet (`mergeBoxGeometry` dans `world.js`) : jambe gauche, jambe
+  droite, buste, bras + arme. Un `Mesh` est un draw call, et onze bots à neuf maillages en
+  coûtaient 99 contre 1 pour la carte entière. Le découpage suit le **mouvement**, pas
+  l'anatomie : on ne sépare que ce qui doit bouger indépendamment — les jambes sont pivotées à la
+  hanche pour le cycle de marche à venir, le bras au niveau de l'épaule, dont `muzzlePosition`
+  (`game.js`) code en dur les 0,30 m et 1,18 m. Ajouter une pièce à un bot, c'est ajouter une
+  ligne à `bodyParts` ou `armParts`, jamais un `Mesh` de plus. La couleur passe par les sommets
+  parce qu'un groupe mélange des teintes ; le matériau, lui, reste propre à chaque bot.
+- **Le fond de scène n'est pas tone-mappé, le brouillard si.** Depuis l'étape 3 le rendu passe par
+  `ACESFilmicToneMapping`, avec une exposition **par carte** (`exposure` dans `maps.js`, 1,10 à
+  1,22) : la courbe creuse les noirs, le rattrapage les récupère. Mais `scene.background` est une
+  couleur d'effacement du framebuffer et échappe à cette courbe, alors que le brouillard, calculé
+  dans le shader, la subit — sur l'Arène, le mur lointain passe de (17,27,44) à (3,11,27) pendant
+  que le fond reste à (42,49,66). D'où le ciel en géométrie (`buildSky` dans `world.js`) : une
+  sphère retournée à couleur par sommet, dont le bas **est** la couleur de brouillard de la carte,
+  donc le raccord à l'horizon redevient invisible. Le dégradé ne vit que dans l'hémisphère
+  supérieur, sinon l'horizon démarre déjà à 61 % de la teinte du zénith. Une carte couverte
+  (`bunker`) ne déclare pas de `skyTop` et n'a donc pas de ciel — ni le draw call, ni le
+  remplissage. Éclaircir un ciel, c'est éclaircir `fog` ET `skyBottom` ensemble, jamais l'un des
+  deux seul.
 - **Collision purement AABB.** Pas de mesh de collision, pas de moteur physique. Le relief est
   fait d'escaliers de boîtes, franchis par un *step-up* automatique de 0,62 m résolu par
   recherche binaire dans `moveActor`. Une rampe inclinée ne serait pas gérée.
@@ -89,8 +119,15 @@ Ce sont les endroits où une modification « évidente » casse silencieusement 
   l'empêche de traverser les murs et de se déformer au zoom.
 - **Éclairage physique r169.** Depuis r155 l'intensité 1 est très sombre : `HEMI_GAIN = 3.4` et
   `SUN_GAIN = 3.6` compensent. Deux lumières au total, jamais plus.
-- **Additive blending obligatoire** sur traceurs et étincelles, sinon ils sortent en traits
-  sombres sur fond clair.
+- **Additive blending obligatoire** sur traceurs, étincelles et flashs de bouche, sinon ils
+  sortent en traits sombres sur fond clair.
+- **Le flash de bouche est une étoile à couleur de sommet** : un éventail de triangles dont le
+  centre porte la couleur et dont **tout le pourtour est noir**. En additif le noir ne dessine
+  rien, donc ce noir *est* le dégradé — l'« éclaircir » rendrait un polygone plat et opaque. Même
+  silhouette des deux côtés (`FLASH_RADII` dans `weapons.js`), mais deux implantations : le joueur
+  a la sienne accrochée à son arme, donc elle suit le recul sans code ; les bots passent par un
+  pool de `effects.js`, orienté face à la caméra à l'allumage. `VM_FLASH_SCALE` réduit la première :
+  les deux caméras ne regardent pas à la même distance.
 - **Pointer lock exige un geste utilisateur** et impose un délai après Échap — d'où l'écran
   « cliquer pour jouer ». `#overlay` est en `pointer-events:none`, seuls les `.screen` captent
   les clics ; l'inverse avale les clics destinés au canvas.
@@ -101,9 +138,12 @@ Ce sont les endroits où une modification « évidente » casse silencieusement 
 |---|---|
 | Équilibrer une arme, la vie, la vitesse | `js/config.js` |
 | Rendre les bots plus durs | `DIFFICULTIES` dans `js/config.js` |
-| Gagner des FPS | `QUALITY` dans `js/config.js` (`renderScale`, `fogFar`) |
+| Gagner des FPS | `QUALITY` dans `js/config.js` (`renderScale`, `fogFar`, `aoTile`) |
+| Régler l'ambiance d'une carte | `exposure`, `fog`, `skyBottom`/`skyTop` dans `js/maps.js` |
+| Régler la netteté des ombres de contact | `aoTile` dans `QUALITY`, constantes `AO_*` de `js/world.js` |
 | Modifier ou ajouter une carte | `js/maps.js` (helpers `B`, `perimeter`, `stairs`, `building`) |
 | Comportement des bots | `js/bots.js` (`sense` / `think` / `aim` / `move`) |
+| Silhouette d'un bot | `bodyParts` / `armParts` dans `js/bots.js`, armes dans `js/weapons.js` |
 | Placement de l'arme à l'écran | `_setupViewModel` dans `js/game.js` |
 
 Dans `maps.js`, `B(x,y,z,w,h,d,color)` prend **x/z au centre mais y à la base**. C'est la source
