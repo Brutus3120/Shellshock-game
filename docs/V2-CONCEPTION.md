@@ -517,8 +517,19 @@ Rien de tout cela ne sert un FPS arcade hors-ligne.
 
 Aucune refonte. Le jeu reste jouable à chaque étape.
 
-1. **Tone mapping et exposition par carte.** Trois lignes dans `_setupRenderer`, un champ
-   `exposure` par carte dans `maps.js`. Effet immédiat sur toutes les cartes.
+1. ~~**Tone mapping et exposition par carte.**~~ **Fait.** `_setupRenderer` pose
+   `ACESFilmicToneMapping` et lit un champ `exposure` ajouté aux quatre cartes ; `mapData` est
+   construite avant le renderer, qui en a besoin. Les valeurs sont mesurées et non choisies :
+   1,00 (Arène), 1,05 (Quartier), 1,25 (Bunker), 1,00 (Crête). Chacune est l'exposition qui
+   conserve la luminosité moyenne d'avant la courbe, et c'est une contrainte plutôt qu'un goût :
+   le brouillard et le fond de scène ne sont pas tone-mappés, donc déplacer le décor tout seul
+   décroche l'horizon. Gain à luminosité égale, en écart-type de luminance : 0,150 → 0,183
+   (Arène), 0,109 → 0,142 (Quartier), 0,125 → 0,177 (Bunker), 0,110 → 0,145 (Crête), soit +22
+   à +42 %. Contrairement à ce que supposait cette entrée, **rien ne saturait** avant — 0 % de
+   pixels au-delà de 0,97, p99 à 0,624 au plus — et rien ne sature après : tout le gain est dans
+   les tons moyens. Coût relevé à scène et caméra identiques, en alternant les blocs : 1,0 à
+   3,2 % d'images par seconde sous SwiftShader, majorant pessimiste pour un GPU intégré.
+   Un seul draw call, triangles et graphe de navigation inchangés.
 2. **Ciel en dégradé.** Un `SphereGeometry` inversé à couleur par sommet, deux teintes lues dans
    la carte. Ajouté dans `_setupWorld`, un draw call.
 3. ~~**Occlusion ambiante cuite.**~~ **Fait.** `buildWorld` construit la collision d'abord, puis
@@ -644,10 +655,11 @@ l'étape 1 n'est pas lancée.
 
 Les dix premières choses à faire, dans l'ordre, en évitant de refaire ce qui marche déjà.
 
-1. **Occlusion ambiante cuite dans les sommets** (`world.js`). Coût nul au rendu, c'est le
-   changement le plus visible du lot.
+1. ~~**Occlusion ambiante cuite dans les sommets** (`world.js`).~~ **Fait** — détail au n°3 de
+   la feuille de route ci-dessus.
 2. **Flash de bouche poolé** (`effects.js`, `game.js`). Ce qui manque le plus à la sensation de tir.
-3. **Tone mapping ACES + exposition par carte** (`game.js`, `maps.js`). Trois lignes, effet global.
+3. ~~**Tone mapping ACES + exposition par carte** (`game.js`, `maps.js`).~~ **Fait** — détail au
+   n°1 de la feuille de route ci-dessus.
 4. **Ciel en dégradé** (`world.js`). Un draw call, et les cartes extérieures cessent d'être des
    boîtes.
 5. **Fusion des maillages de bots** (`bots.js`). Environ 70 draw calls récupérés, qui financent

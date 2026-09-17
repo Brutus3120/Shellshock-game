@@ -39,6 +39,10 @@ export class Game {
 
     this.difficulty = DIFFICULTIES[opts.difficulty] || DIFFICULTIES.normal;
 
+    // Construite avant le renderer, qui a besoin de son exposition. Bâtir une
+    // carte ne fait que remplir une liste de boîtes : aucune ressource GL.
+    this.mapData = buildMapData(this.opts.map);
+
     this._setupRenderer();
     this._setupWorld();
     this._setupActors();
@@ -71,10 +75,19 @@ export class Game {
     this.renderer.autoClear = false;
     this.renderer.shadowMap.enabled = this.quality.shadows;
     if (this.quality.shadows) this.renderer.shadowMap.type = THREE.PCFShadowMap;
+
+    // Courbe ACES. Le rendu linéaire ne saturait pas — rien ne partait au blanc —
+    // mais il tassait tout le décor dans une plage étroite : mesuré sur l'Arène,
+    // l'écart-type de luminance passe de 0,151 à 0,178 à luminosité moyenne
+    // égale. C'est ce gain de séparation qui rend leur volume aux boîtes.
+    // L'exposition vient de la carte, et se règle dans maps.js.
+    // Le brouillard et le fond de scène ne passent PAS par cette courbe : ils
+    // sont appliqués après (voir l'invariant dans CLAUDE.md).
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = this.mapData.exposure ?? 1;
   }
 
   _setupWorld() {
-    this.mapData = buildMapData(this.opts.map);
     this.world = buildWorld(this.mapData, this.quality);
 
     this.scene = new THREE.Scene();

@@ -106,6 +106,12 @@ function mapArene() {
     sampleY: 40,
     sun: { color: 0xffe7c4, intensity: 1.05, dir: [0.4, 1, 0.25] },
     hemi: { sky: 0x6f8fb5, ground: 0x34302c, intensity: 0.85 },
+    // Exposition passée au tone mapping ACES (voir _setupRenderer dans game.js).
+    // Réglée carte par carte pour garder la luminosité moyenne d'avant la
+    // courbe : le ciel et le brouillard, eux, ne sont pas tone-mappés, donc
+    // déplacer le décor tout seul décrocherait l'horizon. À luminosité égale,
+    // ACES rend 20 à 40 % d'écart-type en plus — c'est là qu'est le gain.
+    exposure: 1.00,
     size: S,
     boxes: o,
     spawns: [
@@ -170,6 +176,7 @@ function mapQuartier() {
     sampleY: 40,
     sun: { color: 0xfff0d0, intensity: 1.0, dir: [-0.35, 1, 0.4] },
     hemi: { sky: 0x8aa0bd, ground: 0x3a352e, intensity: 0.8 },
+    exposure: 1.05,
     size: S,
     boxes: o,
     spawns: [
@@ -242,6 +249,7 @@ function mapBunker() {
     sampleY: H - 0.5,
     sun: { color: 0xcfe4ff, intensity: 0.75, dir: [0.2, 1, -0.3] },
     hemi: { sky: 0x8fa6ba, ground: 0x3a4048, intensity: 1.55 },
+    exposure: 1.25,
     size: S,
     boxes: o,
     spawns: [
@@ -316,6 +324,7 @@ function mapCrete() {
     sampleY: 40,
     sun: { color: 0xffd9a0, intensity: 1.15, dir: [0.5, 0.9, -0.35] },
     hemi: { sky: 0xc9a878, ground: 0x4a3c28, intensity: 0.75 },
+    exposure: 1.00,
     size: S,
     boxes: o,
     spawns: [
