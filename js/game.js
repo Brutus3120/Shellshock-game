@@ -336,7 +336,20 @@ export class Game {
       const killed = victim.damage(dmg, shooter);
 
       this.effects.addImpact(ox + dx * bestT, hy, oz + dz * bestT, -dx, -dy, -dz, victim.color || 0xff6b6b, 4);
-      if (victim === this.player) { this.hud.damageFlash(); Sfx.sfxImpact(0); }
+      if (victim === this.player) {
+        this.hud.damageFlash();
+        // Direction du coup, dans le repère de la CAMÉRA et non du monde :
+        // avant = (-sin, -cos), droite = (cos, -sin) pour un lacet de vue.
+        // L'angle vaut 0 droit devant et croît vers la droite, ce qui est
+        // exactement le sens de rotate() en CSS — rien à convertir côté ATH.
+        const ddx = shooter.pos.x - victim.pos.x, ddz = shooter.pos.z - victim.pos.z;
+        if (ddx || ddz) {
+          const vy = this.player.viewYaw;
+          const sn = Math.sin(vy), cs = Math.cos(vy);
+          this.hud.damageFrom(Math.atan2(ddx * cs - ddz * sn, -ddx * sn - ddz * cs) * 180 / Math.PI);
+        }
+        Sfx.sfxImpact(0);
+      }
       if (shooter === this.player && head && !killed) Sfx.sfxHeadshot();
       if (killed) this.registerKill(shooter, victim, def);
       return { dist: bestT, hitActor: true, killed };

@@ -123,7 +123,17 @@ Ce sont les endroits où une modification « évidente » casse silencieusement 
   (`effects.js`) : zéro allocation pendant le combat, donc aucun à-coup de GC. Ne pas remplacer
   par des créations à la volée.
 - **Le HUD est du DOM.** Il reste net quand `renderScale` descend à 0,65, et le GPU ne le touche
-  jamais. Le passer en canvas coûterait des deux côtés.
+  jamais. Le passer en canvas coûterait des deux côtés. Les arcs de direction des dégâts suivent
+  la même logique : un cercle dont seule la bordure **haute** est peinte donne un secteur de 90°
+  pointant vers le haut, qu'une rotation oriente — aucune image, aucun canvas. Ils sont **en
+  pool** comme les effets 3D : quatre nœuds créés une fois, jamais en combat.
+- **La direction des dégâts vit dans le repère de la CAMÉRA, pas du monde.** `game.js` calcule
+  l'angle avec l'avant `(-sin, -cos)` et la droite `(cos, -sin)` du lacet de vue, ce qui donne 0
+  droit devant et positif vers la droite — exactement le sens de `rotate()` en CSS, donc `hud.js`
+  n'a rien à convertir. Toute conversion ajoutée quelque part entre les deux casse l'indicateur
+  d'une façon qui ne se voit qu'en jeu. La vignette de vie basse, elle, a une **hystérésis**
+  (allumée sous 30, éteinte au-dessus de 35) : sans elle, encaisser à la frontière la fait
+  clignoter.
 - **Deux scènes, deux caméras.** L'arme en vue subjective vit dans sa propre scène avec une
   caméra fov 55 **indépendante du FOV joueur**, rendue après `clearDepth()`. C'est ce qui
   l'empêche de traverser les murs et de se déformer au zoom.

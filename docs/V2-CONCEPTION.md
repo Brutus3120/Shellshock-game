@@ -596,7 +596,18 @@ Aucune refonte. Le jeu reste jouable à chaque étape.
    10 m, 29 à 20 m, 2 à 40 m. La promesse « on voit l'orange avant la silhouette à 40 m » n'est
    donc pas tenable en tir à la hanche — à cette distance le bot entier fait dix-huit pixels de
    haut. Elle l'est jusqu'à une vingtaine de mètres, et au-delà en visée, où le champ se resserre.
-8. **Direction des dégâts et vignettage de vie basse.** `hud.js` et `style.css`.
+8. ~~**Direction des dégâts et vignettage de vie basse.**~~ **Fait**, entièrement en DOM et CSS
+   comme le reste de l'ATH. Un arc de direction est un cercle dont seule la bordure **haute** est
+   peinte — un secteur de 90° pointant vers le haut, qu'une rotation oriente : aucune image, aucun
+   canvas. Quatre arcs en pool, réutilisés en boucle ; une rafale groupée en rafraîchit un seul
+   (vérifié : trois coups à moins de 20° d'écart consomment 1 arc, trois coups séparés en
+   consomment 3). L'angle est calculé dans le repère de la **caméra** et pas du monde, donc 0 droit
+   devant et positif à droite, ce qui est exactement le sens de `rotate()` en CSS. Recoupé sur de
+   vrais coups reçus en simulation contre une formule indépendante : écart maximal **0,000°**.
+   La vignette de vie basse s'allume sous 30 points et ne s'éteint qu'à 35 — sans cette hystérésis
+   elle clignote dès qu'on encaisse à la frontière — et reste volontairement plus sombre, plus
+   désaturée et plus lente que le liseré de `#damage-flash`, pour qu'on ne confonde pas « je prends
+   un coup » et « je suis bas ».
 
 ## V2.2 — amélioration intermédiaire
 
@@ -728,8 +739,8 @@ Les dix premières choses à faire, dans l'ordre, en évitant de refaire ce qui 
    Le gros du gain de variété, sans toucher au moteur de tir.
 9. **Animations d'arme** (`game.js`). Recul, marche, rechargement, changement — le poids se
    ressent immédiatement.
-10. **Chevron orange + direction des dégâts au HUD** (`bots.js`, `hud.js`). Les deux corrections de
-    lisibilité qui changent le plus en combat, pour presque rien.
+10. ~~**Chevron orange + direction des dégâts au HUD**~~ (`bots.js`, `hud.js`). **Fait** : le
+    chevron ne coûte aucun draw call et l'ATH reste du DOM. Le palier V2.1 est terminé.
 
 Les décalcomanies, les projectiles et les cartes nouvelles viennent après. Elles sont plus
 ambitieuses et méritent une base déjà stabilisée.
