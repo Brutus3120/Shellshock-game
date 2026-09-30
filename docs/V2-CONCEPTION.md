@@ -401,10 +401,18 @@ Un **chevron orange `#ff7a3c`** sur les deux épaules de tous les bots, quelle q
 d'équipe. C'est la règle de signal de la DA appliquée aux personnages : à 40 m, dans le contre-jour
 de la Crête, on voit l'orange avant de voir la silhouette.
 
-Une **ombre de contact** sous chaque acteur — un quad sombre orienté vers le haut, tous regroupés
-dans un seul `BufferGeometry` mis à jour chaque frame, soit 1 draw call pour l'ensemble des
-acteurs. Ça marche sur tous les préréglages, y compris `bas` où les vraies ombres sont coupées.
-C'est l'amélioration qui ancre les personnages au sol.
+Une **ombre de contact** sous chaque acteur — **fait**. Pas le quad prévu ici mais un éventail à
+deux anneaux : noyau sombre, bord blanc, mélange multiplicatif. Tous les acteurs dans un seul
+`BufferGeometry` réécrit à chaque image, soit 1 draw call pour l'ensemble. Ça marche sur tous les
+préréglages, y compris `bas` où les vraies ombres sont coupées, et en `haut` la force tombe à 55 %
+pour ne pas noircir deux fois. C'est l'amélioration qui ancre les personnages au sol — et la seule
+qui dise à quelle hauteur un bot saute.
+
+Trois pièges, tous mesurés plutôt que devinés : l'enroulement du disque (avec `(cos a, 0, sin a)`
+la normale pointe vers le **bas** et le disque disparaît) ; `toneMapped: false`, sans quoi la
+courbe ACES s'applique au blanc du pourtour qui cesse d'être neutre ; et la teinte du noyau, qui
+se donne en **linéaire** alors que le mélange se fait après encodage sRGB — 0,18 linéaire vaut
+0,46 à l'écran, pas 0,18.
 
 Un **flash de dégâts** : l'émissive du matériau du bot monte à blanc pendant 0,08 s quand il est
 touché. Le retour d'information de tir devient immédiat, même sans marqueur de coup.
@@ -564,7 +572,13 @@ Aucune refonte. Le jeu reste jouable à chaque étape.
    arme (`muzzle` dans `config.js`). Mesuré : **+1 draw call**, 0 allocation par tir. Au passage,
    `muzzlePosition` faisait partir le coup du visage des bots au lieu de leur arme — invisible avec
    une traçante fine, flagrant avec un flash.
-5. **Ombres de contact.** Un maillage unique de quads, mis à jour depuis la boucle de `game.js`.
+5. ~~**Ombres de contact.**~~ **Fait**, en éventails à deux anneaux plutôt qu'en quads : un quad a
+   des bords carrés, et un éventail simple n'a de sombre que son sommet exact — mesuré, il ne
+   retirait que 35 niveaux sur 255. Centre et anneau intérieur sombres (le noyau), bord blanc
+   (l'adoucissement), en **mélange multiplicatif** où le blanc est l'élément neutre. Un seul
+   maillage pour tous les acteurs, joueur compris : **+1 draw call**, coût d'image nul. La sonde
+   de sol part des pieds de l'acteur et jamais de `sampleY`, sinon elle trouverait le toit
+   au-dessus de lui ; au contact elle est sautée, ce qui est le cas courant.
 6. ~~**Suppression des allocations de `THREE.Color` par tir.**~~ **Fait**, avec l'étape 4 : cache
    `hex → {r,g,b}` dans `effects.js`, rempli via `THREE.Color` pour conserver la conversion
    sRGB → linéaire de r169. `muzzlePosition` écrit désormais dans un objet réutilisé au lieu d'en
@@ -693,8 +707,9 @@ Les dix premières choses à faire, dans l'ordre, en évitant de refaire ce qui 
    zéro sur le Bunker, et les cartes extérieures cessent d'être des boîtes.
 5. ~~**Fusion des maillages de bots**~~ (`bots.js`). **Fait** : 55 draw calls récupérés à onze
    bots (99 → 44), qui financent tout le reste.
-6. **Ombres de contact** (`effects.js`). Ancre les acteurs au sol sur tous les préréglages, y
-   compris `bas`.
+6. ~~**Ombres de contact**~~ (`effects.js`). **Fait** : ancre les acteurs au sol sur tous les
+   préréglages, et rend la hauteur d'un saut lisible — l'ombre s'élargit et pâlit quand l'acteur
+   monte, disparaît au-delà de 2,2 m.
 7. **Séparation catalogue / inventaire** (`config.js`, `weapons.js`, `bots.js`). Prérequis
    obligatoire des nouvelles armes ; c'est aussi ce qui fait disparaître les `(Math.random()*3)|0`.
 8. **Quatre armes hitscan nouvelles + modèles retravaillés** (`config.js`, `weapons.js`).

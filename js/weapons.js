@@ -119,11 +119,19 @@ export const FLASH_RADII = [1.0, 0.44, 0.82, 0.40, 1.0, 0.44, 0.82, 0.40];
 /** Réduction du flash en vue subjective : deux caméras, deux distances. */
 const VM_FLASH_SCALE = 0.30;
 
-/** Indices d'un éventail : sommet 0 au centre, 1..FLASH_SPOKES au pourtour. */
-export function flashIndices(out, base, at) {
-  for (let s = 0; s < FLASH_SPOKES; s++) {
+/**
+ * Indices d'un éventail : sommet 0 au centre, 1..spokes au pourtour.
+ *
+ * Deux effets s'en servent, et pour des raisons opposées : le flash de bouche,
+ * dont le centre est coloré et le pourtour noir en additif, et l'ombre de
+ * contact (`effects.js`), dont le centre est sombre et le pourtour blanc en
+ * multiplicatif. Dans les deux cas c'est le dégradé du sommet vers le pourtour
+ * qui fait tout le travail, sans une seule texture.
+ */
+export function fanIndices(out, base, at, spokes = FLASH_SPOKES) {
+  for (let s = 0; s < spokes; s++) {
     const a = base + 1 + s;
-    const b = base + 1 + ((s + 1) % FLASH_SPOKES);
+    const b = base + 1 + ((s + 1) % spokes);
     out[at++] = base; out[at++] = a; out[at++] = b;
   }
   return at;
@@ -144,7 +152,7 @@ function flashStar(color, size) {
     // pourtour laissé à zéro : c'est ce qui fait le dégradé.
   }
   const idx = new Uint16Array(n * 3);
-  flashIndices(idx, 0, 0);
+  fanIndices(idx, 0, 0);
 
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));

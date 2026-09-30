@@ -22,6 +22,9 @@ const TMP = { x: 0, y: 0, z: 0 };
 const MUZZLE = { x: 0, y: 0, z: 0 };   // sortie réutilisée de muzzlePosition
 const DIR = { x: 0, y: 0, z: 0 };      // direction non dispersée, pour le flash
 
+/** Hauteur au-delà de laquelle un acteur n'a plus d'ombre de contact (m). */
+const SHADOW_FADE = 2.2;
+
 export class Game {
   constructor(canvas, opts, settings, hud) {
     this.canvas = canvas;
@@ -77,6 +80,9 @@ export class Game {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.shadowMap.enabled = this.quality.shadows;
     if (this.quality.shadows) this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    // En préréglage haut les vraies ombres portées existent déjà : l'ombre de
+    // contact s'y ajoute discrètement au lieu de noircir deux fois.
+    this.shadowStrength = this.quality.shadows ? 0.55 : 1;
   }
 
   _setupWorld() {
@@ -391,6 +397,7 @@ export class Game {
         b.syncMesh();
       }
       if (!this.player.alive && this.player.respawnTimer <= 0) this.respawnActor(this.player);
+      this.updateShadows();
 
       this.updatePickups(dt);
       this.effects.update(dt);
@@ -478,6 +485,37 @@ export class Game {
       }
       void p;
     }
+  }
+
+  /**
+   * Ombres de contact : un disque sombre sous chaque acteur vivant, tous dans
+   * le même maillage, donc un seul draw call. C'est ce qui ancre les
+   * personnages au sol sur les préréglages où les ombres portées sont coupées,
+   * c'est-à-dire sur la cible réelle du projet.
+   *
+   * Elles portent aussi une information que rien d'autre ne donne : un bot qui
+   * saute voit son ombre s'éloigner et pâlir. Sans elles, sa hauteur ne se lit
+   * nulle part.
+   */
+  updateShadows() {
+    let n = 0;
+    for (const a of this.actors) {
+      if (!a.alive) continue;
+      // Sol sous l'acteur. Au contact, ses pieds SONT le sol et la sonde est
+      // inutile — c'est le cas la plupart du temps. En l'air, on descend depuis
+      // ses pieds, surtout pas depuis sampleY comme groundAt : ce rayon-là
+      // trouverait le toit sous lequel il se tient.
+      const gy = a.onGround
+        ? a.pos.y
+        : this.world.collision.groundHeight(a.pos.x, a.pos.z, a.pos.y + 0.1);
+      const h = a.pos.y - gy;
+      if (h > SHADOW_FADE || h < -0.5) continue;     // trop haut, ou sol introuvable
+      const t = Math.max(0, h) / SHADOW_FADE;
+      this.effects.setShadow(n++, a.pos.x, gy + 0.02, a.pos.z,
+        a.radius * (1.75 + t * 0.9),                 // l'ombre s'élargit en montant
+        this.shadowStrength * (1 - t) * (1 - t));    // et s'efface, plus vite que linéairement
+    }
+    this.effects.hideShadowsFrom(n);
   }
 
   updateCamera(dt) {

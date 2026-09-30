@@ -7,12 +7,26 @@
  */
 
 import * as THREE from '../vendor/three.module.js';
-import { FLASH_SPOKES, FLASH_RADII, flashIndices } from './weapons.js';
+import { FLASH_SPOKES, FLASH_RADII, fanIndices } from './weapons.js';
 
 const TRACERS = 48;
 const SPARKS = 160;
 const FLASHES = 16;                 // huit bots en rafale tiennent largement dedans
 const FLASH_VERTS = FLASH_SPOKES + 1;
+
+// --- ombres de contact ---
+const SHADOWS = 16;                 // onze bots + le joueur, avec de la marge
+const SHADOW_SPOKES = 10;           // un disque, pas l'étoile du flash
+/**
+ * Deux anneaux et pas un seul. Avec un éventail simple, seul le sommet central
+ * porte la teinte sombre et tout le reste s'éclaircit linéairement : mesuré,
+ * ça ne retirait que 35 niveaux sur 255 au plus noir, une tache à peine
+ * visible. L'anneau intérieur, sombre lui aussi, donne un noyau plein ; la
+ * couronne jusqu'au bord fait l'adoucissement.
+ */
+const SHADOW_INNER = 0.60;          // rayon du noyau, en fraction du rayon total
+const SHADOW_VERTS = 1 + SHADOW_SPOKES * 2;
+const SHADOW_TRIS = SHADOW_SPOKES * 3;
 
 /**
  * Couleurs pré-converties. `new THREE.Color(hex)` applique la conversion
@@ -20,6 +34,16 @@ const FLASH_VERTS = FLASH_SPOKES + 1;
  * par un décalage de bits sans changer toutes les teintes. On la fait donc une
  * fois par teinte, et plus jamais — sinon c'est une allocation à chaque coup tiré.
  */
+/**
+ * Ce qui reste de la lumière du sol sous le noyau d'une ombre à pleine
+ * intensité — en LINÉAIRE. Le shader encode sa sortie en sRGB avant le
+ * mélange, donc 0,22 devient environ 0,50 à l'écran : le sol perd la moitié de
+ * sa lumière, pas les quatre cinquièmes. Se tromper de repère ici donne une
+ * ombre qu'on croit posée et qu'on ne voit pas (mesuré : 0,42 linéaire ne
+ * retirait que 48 niveaux sur 255).
+ */
+const SHADOW_DARK = 0.18;
+
 const COLORS = new Map();
 const _work = new THREE.Color();
 function rgbOf(hex) {
@@ -80,7 +104,7 @@ export class Effects {
     this.fCol = new Float32Array(FLASHES * FLASH_VERTS * 3);
     const fIdx = new Uint16Array(FLASHES * FLASH_SPOKES * 3);
     let at = 0;
-    for (let i = 0; i < FLASHES; i++) at = flashIndices(fIdx, i * FLASH_VERTS, at);
+    for (let i = 0; i < FLASHES; i++) at = fanIndices(fIdx, i * FLASH_VERTS, at);
     fg.setAttribute('position', new THREE.BufferAttribute(this.fPos, 3));
     fg.setAttribute('color', new THREE.BufferAttribute(this.fCol, 3));
     fg.setIndex(new THREE.BufferAttribute(fIdx, 1));
@@ -93,6 +117,108 @@ export class Effects {
     this.flashes = [];
     for (let i = 0; i < FLASHES; i++) this.flashes.push({ life: 0, max: 1, r: 1, g: 1, b: 1 });
     this._flash = 0;
+
+    // --- ombres de contact ---
+    // Le même éventail que le flash, retourné dans son principe : le centre est
+    // SOMBRE, le pourtour BLANC, et le mélange est MULTIPLICATIF — en multiply
+    // le blanc est l'élément neutre, donc le pourtour ne dessine rien et le
+    // dégradé du centre vers le bord est l'adoucissement de l'ombre. Un disque
+    // net aurait un bord franc ; une texture coûterait un fichier que le projet
+    // s'interdit.
+    const shg = new THREE.BufferGeometry();
+    this.shPos = new Float32Array(SHADOWS * SHADOW_VERTS * 3);
+    this.shCol = new Float32Array(SHADOWS * SHADOW_VERTS * 3);
+    const shIdx = new Uint16Array(SHADOWS * SHADOW_TRIS * 3);
+    let shAt = 0;
+    for (let i = 0; i < SHADOWS; i++) {
+      const base = i * SHADOW_VERTS;
+      shAt = fanIndices(shIdx, base, shAt, SHADOW_SPOKES);     // noyau : centre + anneau intérieur
+      for (let k = 0; k < SHADOW_SPOKES; k++) {                // couronne : intérieur → bord
+        const i0 = base + 1 + k, i1 = base + 1 + ((k + 1) % SHADOW_SPOKES);
+        const o0 = base + 1 + SHADOW_SPOKES + k;
+        const o1 = base + 1 + SHADOW_SPOKES + ((k + 1) % SHADOW_SPOKES);
+        shIdx[shAt++] = i0; shIdx[shAt++] = o0; shIdx[shAt++] = o1;
+        shIdx[shAt++] = i0; shIdx[shAt++] = o1; shIdx[shAt++] = i1;
+      }
+    }
+    for (let i = 0; i < this.shCol.length; i++) this.shCol[i] = 1;   // tout éteint = tout blanc
+    shg.setAttribute('position', new THREE.BufferAttribute(this.shPos, 3));
+    shg.setAttribute('color', new THREE.BufferAttribute(this.shCol, 3));
+    shg.setIndex(new THREE.BufferAttribute(shIdx, 1));
+    this.shadowMesh = new THREE.Mesh(shg, new THREE.MeshBasicMaterial({
+      vertexColors: true, transparent: true, depthWrite: false,
+      blending: THREE.MultiplyBlending,
+      // Sans ça, la courbe ACES de _setupRenderer s'applique AUSSI au blanc du
+      // pourtour : il cesse d'être neutre et cerne l'ombre d'un disque plus
+      // sombre que le sol. C'est la condition de tout le procédé.
+      toneMapped: false,
+    }));
+    this.shadowMesh.frustumCulled = false;
+    scene.add(this.shadowMesh);
+    // Le pourtour tourne dans le sens NÉGATIF en Z. Avec (cos a, 0, sin a), la
+    // normale des triangles vaut (0, -sin(Δa), 0) : le disque regarde vers le
+    // bas et disparaît, éliminé en face arrière. Le sinus opposé le retourne —
+    // et une ombre au sol ne se regarde que du dessus, donc `FrontSide` suffit.
+    this._shadowCos = new Float32Array(SHADOW_SPOKES);
+    this._shadowSin = new Float32Array(SHADOW_SPOKES);
+    for (let s = 0; s < SHADOW_SPOKES; s++) {
+      const a = (s / SHADOW_SPOKES) * Math.PI * 2;
+      this._shadowCos[s] = Math.cos(a); this._shadowSin[s] = -Math.sin(a);
+    }
+    this._shadowsUsed = 0;
+  }
+
+  /**
+   * Pose l'ombre `i` : un disque horizontal centré en (x,y,z), de rayon
+   * `radius`, d'intensité `strength` (0 = invisible, 1 = aussi sombre que
+   * SHADOW_DARK le permet).
+   *
+   * Appelée à chaque image pour chaque acteur vivant, donc sans une seule
+   * allocation : on réécrit les mêmes tableaux. Le drapeau de mise à jour des
+   * tampons est posé une seule fois, par `hideShadowsFrom` en fin de boucle.
+   */
+  setShadow(i, x, y, z, radius, strength) {
+    if (i >= SHADOWS) return;
+    const base = i * SHADOW_VERTS;
+    const k = Math.max(0, Math.min(1, strength));
+    // Du blanc (neutre) vers SHADOW_DARK selon l'intensité.
+    const c = 1 - (1 - SHADOW_DARK) * k;
+    const inner = radius * SHADOW_INNER;
+    let o = base * 3;
+    this.shPos[o] = x; this.shPos[o + 1] = y; this.shPos[o + 2] = z;
+    this.shCol[o] = c; this.shCol[o + 1] = c; this.shCol[o + 2] = c;
+    for (let s = 0; s < SHADOW_SPOKES; s++) {
+      const cs = this._shadowCos[s], sn = this._shadowSin[s];
+      o = (base + 1 + s) * 3;                                   // anneau intérieur : sombre
+      this.shPos[o] = x + cs * inner;
+      this.shPos[o + 1] = y;
+      this.shPos[o + 2] = z + sn * inner;
+      this.shCol[o] = c; this.shCol[o + 1] = c; this.shCol[o + 2] = c;
+      o = (base + 1 + SHADOW_SPOKES + s) * 3;                   // bord : blanc, donc neutre
+      this.shPos[o] = x + cs * radius;
+      this.shPos[o + 1] = y;
+      this.shPos[o + 2] = z + sn * radius;
+      this.shCol[o] = 1; this.shCol[o + 1] = 1; this.shCol[o + 2] = 1;
+    }
+    if (i >= this._shadowsUsed) this._shadowsUsed = i + 1;
+  }
+
+  /**
+   * Éteint les ombres à partir de `count` : acteurs morts, bots pas encore
+   * réapparus, fin de partie. Éteindre, c'est repasser au blanc — le neutre du
+   * multiplicatif — comme un flash éteint repasse au noir en additif.
+   */
+  hideShadowsFrom(count) {
+    for (let i = count; i < this._shadowsUsed; i++) {
+      const base = i * SHADOW_VERTS;
+      for (let v = 0; v < SHADOW_VERTS; v++) {
+        const o = (base + v) * 3;
+        this.shCol[o] = 1; this.shCol[o + 1] = 1; this.shCol[o + 2] = 1;
+      }
+    }
+    this._shadowsUsed = Math.min(count, SHADOWS);   // borne : douze acteurs, pool de seize
+    this.shadowMesh.geometry.attributes.position.needsUpdate = true;
+    this.shadowMesh.geometry.attributes.color.needsUpdate = true;
   }
 
   addTracer(x0, y0, z0, x1, y1, z1, color = 0xfff0b0) {
@@ -238,5 +364,7 @@ export class Effects {
     // les scènes pour libérer ce qui reste, et ne doit pas retomber dessus.
     if (this.flashMesh.parent) this.flashMesh.parent.remove(this.flashMesh);
     this.flashMesh.geometry.dispose(); this.flashMesh.material.dispose();
+    if (this.shadowMesh.parent) this.shadowMesh.parent.remove(this.shadowMesh);
+    this.shadowMesh.geometry.dispose(); this.shadowMesh.material.dispose();
   }
 }

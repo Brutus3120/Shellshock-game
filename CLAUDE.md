@@ -55,7 +55,7 @@ js/
   input.js        clavier/souris, pointer lock (ZQSD + WASD + flèches)
   weapons.js      chargeur, cadence, recharge, hitscan
   bots.js         perception, décision, visée, tir, déplacement
-  effects.js      traceurs et étincelles, en pools
+  effects.js      traceurs, étincelles, flashs et ombres de contact, en pools
   hud.js          barre de vie, munitions, score, killfeed, minimap
   audio.js        SFX synthétisés à la volée en WebAudio
   game.js         le match : monde, acteurs, tir, caméra, rendu, classement
@@ -110,8 +110,9 @@ Ce sont les endroits où une modification « évidente » casse silencieusement 
   garde les points où une capsule tient debout. Pas d'A\* : les bots se dirigent tout droit et
   évitent avec trois rayons « moustaches ». Conséquence : une carte doit rester *lisible en
   ligne droite*, un labyrinthe piégerait les bots.
-- **Pools de taille fixe** pour traceurs et étincelles (`effects.js`) : zéro allocation pendant
-  le combat, donc aucun à-coup de GC. Ne pas remplacer par des créations à la volée.
+- **Pools de taille fixe** pour traceurs, étincelles, flashs de bouche et ombres de contact
+  (`effects.js`) : zéro allocation pendant le combat, donc aucun à-coup de GC. Ne pas remplacer
+  par des créations à la volée.
 - **Le HUD est du DOM.** Il reste net quand `renderScale` descend à 0,65, et le GPU ne le touche
   jamais. Le passer en canvas coûterait des deux côtés.
 - **Deux scènes, deux caméras.** L'arme en vue subjective vit dans sa propre scène avec une
@@ -128,6 +129,19 @@ Ce sont les endroits où une modification « évidente » casse silencieusement 
   a la sienne accrochée à son arme, donc elle suit le recul sans code ; les bots passent par un
   pool de `effects.js`, orienté face à la caméra à l'allumage. `VM_FLASH_SCALE` réduit la première :
   les deux caméras ne regardent pas à la même distance.
+- **L'ombre de contact est le seul effet MULTIPLICATIF du jeu**, et trois détails la font
+  exister ou disparaître. Son disque est un éventail à deux anneaux : centre et anneau intérieur
+  sombres — le noyau —, bord blanc, et en multiply le blanc est l'élément **neutre**, donc c'est
+  le dégradé du noyau vers le bord qui adoucit. Les trois détails : l'**enroulement**, car avec
+  `(cos a, 0, sin a)` la normale des triangles pointe vers le bas et le disque est éliminé en face
+  arrière (d'où le sinus opposé dans `effects.js`) ; **`toneMapped: false`**, sans quoi la courbe
+  ACES s'applique au blanc du pourtour, qui cesse d'être neutre et cerne l'ombre d'un disque plus
+  sombre que le sol ; et la teinte du noyau (`SHADOW_DARK`), donnée en **linéaire** alors que le
+  mélange a lieu après encodage sRGB — 0,18 linéaire vaut environ 0,46 à l'écran. La sonde de sol
+  (`updateShadows` dans `game.js`) part des **pieds** de l'acteur et jamais de `sampleY` comme
+  `groundAt`, qui trouverait le toit au-dessus de lui ; au contact elle est sautée. Un acteur au
+  bord d'une caisse verra son disque déborder dans le vide : c'est assumé, le corriger coûterait
+  quatre sondes par acteur et par image.
 - **Pointer lock exige un geste utilisateur** et impose un délai après Échap — d'où l'écran
   « cliquer pour jouer ». `#overlay` est en `pointer-events:none`, seuls les `.screen` captent
   les clics ; l'inverse avale les clics destinés au canvas.
@@ -145,6 +159,7 @@ Ce sont les endroits où une modification « évidente » casse silencieusement 
 | Comportement des bots | `js/bots.js` (`sense` / `think` / `aim` / `move`) |
 | Silhouette d'un bot | `bodyParts` / `armParts` dans `js/bots.js`, armes dans `js/weapons.js` |
 | Placement de l'arme à l'écran | `_setupViewModel` dans `js/game.js` |
+| Force et taille des ombres de contact | `SHADOW_*` dans `js/effects.js`, `updateShadows` dans `js/game.js` |
 
 Dans `maps.js`, `B(x,y,z,w,h,d,color)` prend **x/z au centre mais y à la base**. C'est la source
 d'erreur numéro un quand on ajoute une boîte.
