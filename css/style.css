@@ -76,6 +76,30 @@ kbd {
 }
 #damage-flash.on { opacity: 1; transition: none; }
 
+/* Vie basse : même famille que le liseré de dégâts, mais plus sombre, plus
+   désaturé et animé lentement — « je suis bas » ne doit pas se lire comme
+   « je viens d'être touché ». */
+#lowhp {
+  position: absolute; inset: 0; opacity: 0; pointer-events: none;
+  background: radial-gradient(ellipse at center, transparent 30%, rgba(96,8,14,.88) 100%);
+  transition: opacity .7s ease-out;
+}
+#lowhp.on { animation: lowpulse 2.6s ease-in-out infinite; }
+@keyframes lowpulse { 0%, 100% { opacity: .7; } 50% { opacity: 1; } }
+
+/* Direction des dégâts. Chaque arc est un cercle dont SEULE la bordure haute
+   est peinte : on obtient un secteur de 90° pointant vers le haut, qu'une
+   rotation oriente. Zéro image, zéro canvas, et l'effacement est une simple
+   transition d'opacité. L'orange est celui du signal (SIGNAL_ORANGE). */
+#damage-dir { position: absolute; left: 50%; top: 50%; width: 0; height: 0; pointer-events: none; }
+#damage-dir i {
+  position: absolute; left: -104px; top: -104px; width: 208px; height: 208px;
+  border: 5px solid transparent; border-top-color: rgba(255, 122, 60, .9);
+  border-radius: 50%; opacity: 0; transition: opacity .45s ease-out;
+  filter: drop-shadow(0 0 4px rgba(255, 122, 60, .35));
+}
+#damage-dir i.on { opacity: 1; transition: none; }
+
 #topbar {
   position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
   display: flex; align-items: center; gap: 14px;
