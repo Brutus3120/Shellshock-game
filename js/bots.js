@@ -13,7 +13,7 @@
  */
 
 import * as THREE from '../vendor/three.module.js';
-import { BOT, WEAPONS, WEAPON_ORDER } from './config.js';
+import { BOT, WEAPONS, WEAPON_ORDER, SIGNAL_ORANGE } from './config.js';
 import { moveActor } from './collision.js';
 import { Loadout } from './weapons.js';
 
@@ -432,7 +432,7 @@ function fusionneBoites(boites) {
   const pos = new Float32Array(nv * 3);
   const nor = new Float32Array(nv * 3);
   const col = new Float32Array(nv * 3);
-  const idx = new Uint16Array(ni);          // 9 boîtes = 216 sommets, large
+  const idx = new Uint16Array(ni);          // 10 boîtes = 240 sommets, large
   const c = new THREE.Color();
 
   let vo = 0, io = 0;
@@ -465,6 +465,29 @@ const BOT_VISOR = 0x12161c;     // visière
 const BOT_GUN = 0x2b3038;       // corps de l'arme
 
 /**
+ * Le chevron d'épaule, en orange de signal : quatre boîtes, deux par épaule.
+ *
+ * Il est en ESCALIER — l'extérieure plus basse, l'intérieure plus haute, donc
+ * un chevron vu de face — et non un V incliné : `fusionneBoites` ne cuit
+ * qu'une rotation autour de Y, le jeu est fait de boîtes, et à quarante
+ * mètres c'est la couleur qui porte le signal, pas la forme.
+ *
+ * Une boîte noyée dans le torse ne se voit pas : chaque marche DÉBORDE, de
+ * 4 cm devant et derrière (d = 0,44 contre 0,36), la basse de 4 cm vers
+ * l'extérieur, la haute de 6 cm au-dessus de l'épaule.
+ *
+ * Il ne coûte AUCUN draw call : il entre dans le maillage du corps.
+ */
+function chevron() {
+  const parts = [];
+  for (const s of [-1, 1]) {
+    parts.push({ w: 0.16, h: 0.17, d: 0.44, x: s * 0.275, y: 1.250, z: 0, color: SIGNAL_ORANGE });
+    parts.push({ w: 0.16, h: 0.17, d: 0.44, x: s * 0.220, y: 1.400, z: 0, color: SIGNAL_ORANGE });
+  }
+  return parts;
+}
+
+/**
  * Un bot en DEUX maillages au lieu de neuf : le corps, et le bras qui pivote.
  *
  * Le bras reste séparé parce qu'il tourne avec le tangage, et que c'est ce qui
@@ -486,6 +509,7 @@ function buildBotMesh(color) {
     { w: 0.20, h: 0.62, d: 0.24, x: 0.15, y: 0.31, z: 0, color: BOT_DARK },       // jambe d.
     { w: 0.38, h: 0.34, d: 0.36, x: 0, y: 1.56, z: 0, ry: 0.18, color },          // tête
     { w: 0.30, h: 0.10, d: 0.06, x: 0, y: 1.58, z: -0.19, color: BOT_VISOR },     // visière
+    ...chevron(),
   ]), mat);
   g.add(corps);
 

@@ -173,7 +173,27 @@ export const BOT_NAMES = [
   'Cobalt', 'Muse', 'Fable', 'Cendre', 'Zigg', 'Onyx', 'Pyrite', 'Lumen',
 ];
 
+/**
+ * Orange de signal. Il désigne l'hostile et le danger, et RIEN d'autre : le
+ * chevron d'épaule des bots aujourd'hui, les zones d'explosion et les dégâts
+ * reçus ensuite. Son pendant est le teal `#4fd1c5` de l'interface et du
+ * joueur (voir `--accent` dans style.css). Ces deux teintes sont réservées :
+ * c'est ce qui garantit qu'une tache orange à 40 m est toujours une cible, et
+ * jamais un mur ni un élément d'ATH.
+ */
+export const SIGNAL_ORANGE = 0xff7a3c;
+
+/**
+ * Couleurs d'équipe des bots. Aucune ne doit s'approcher des deux teintes de
+ * signal : trois d'entre elles le faisaient et ont été remplacées — un cyan
+ * (0x5ad1e8) et un turquoise (0x4ad8c8) à quelques degrés du teal d'interface,
+ * un orange brûlé (0xd88a4a) qui entrait en collision avec le chevron, et un
+ * saumon (0xe86a5a) sur lequel un chevron orange ne se détachait pas — vérifié
+ * en capture, c'est le cas qui ruinait la règle du signal.
+ * Les bandes de teinte libres sont le rouge, le jaune, le vert, le bleu et le
+ * magenta ; le cyan-turquoise (160-200°) et l'orange (10-40°) sont interdits.
+ */
 export const BOT_COLORS = [
-  0xe86a5a, 0x5ad1e8, 0xe8c65a, 0x9a6ae8, 0x5ae88c, 0xe85aa8,
-  0x6a8ce8, 0xd88a4a, 0x8ce85a, 0xe85a5a, 0x4ad8c8, 0xb8b8c8,
+  0xe85a5a, 0xd84ad8, 0xe8c65a, 0x9a6ae8, 0x5ae88c, 0xe85aa8,
+  0x6a8ce8, 0xc8e84a, 0x8ce85a, 0x5a9ae8, 0x6a5ae8, 0xb8b8c8,
 ];
