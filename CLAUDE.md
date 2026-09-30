@@ -86,6 +86,15 @@ Ce sont les endroits où une modification « évidente » casse silencieusement 
   (`game.js`) code en dur les 0,30 m et 1,18 m. Ajouter une pièce à un bot, c'est ajouter une
   ligne à `bodyParts` ou `armParts`, jamais un `Mesh` de plus. La couleur passe par les sommets
   parce qu'un groupe mélange des teintes ; le matériau, lui, reste propre à chaque bot.
+- **Deux teintes sont réservées au signal**, et rien d'autre n'a le droit de s'en approcher :
+  l'orange `#ff7a3c` (`SIGNAL_ORANGE` dans `config.js`) désigne l'hostile — chevron d'épaule des
+  bots aujourd'hui, explosions et dégâts reçus demain — et le teal `#4fd1c5` (`--accent` dans
+  `style.css`) désigne le joueur et l'interface. `BOT_COLORS` s'est fait retirer quatre teintes
+  pour cette règle : un cyan et un turquoise à **1°** de teinte du teal, un orange brûlé à 8° du
+  signal, et un saumon sur lequel le chevron ne se détachait pas. L'écart minimal est aujourd'hui
+  de 19°, et une nouvelle couleur de bot doit s'y tenir : les bandes 10-40° (orange) et 160-200°
+  (cyan) sont interdites. Le chevron lui-même **déborde** du torse de 4 cm — une boîte noyée dans
+  une autre ne se voit pas — et ne coûte aucun draw call, le buste étant un maillage fusionné.
 - **Le fond de scène n'est pas tone-mappé, le brouillard si.** Depuis l'étape 3 le rendu passe par
   `ACESFilmicToneMapping`, avec une exposition **par carte** (`exposure` dans `maps.js`, 1,10 à
   1,22) : la courbe creuse les noirs, le rattrapage les récupère. Mais `scene.background` est une

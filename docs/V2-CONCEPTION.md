@@ -583,7 +583,19 @@ Aucune refonte. Le jeu reste jouable à chaque étape.
    `hex → {r,g,b}` dans `effects.js`, rempli via `THREE.Color` pour conserver la conversion
    sRGB → linéaire de r169. `muzzlePosition` écrit désormais dans un objet réutilisé au lieu d'en
    allouer un par plomb.
-7. **Chevron orange et nettoyage de `BOT_COLORS`.**
+7. ~~**Chevron orange et nettoyage de `BOT_COLORS`.**~~ **Fait.** `SIGNAL_ORANGE` est une
+   constante exportée de `config.js`, pas un littéral recopié. Le chevron est en escalier — deux
+   marches par épaule, l'intérieure plus haute, donc un chevron vu de face — et il **déborde** du
+   torse de 4 cm, sans quoi il serait noyé dedans et invisible. **Zéro draw call**, +48 triangles
+   par bot : c'est ce que l'étape 5 avait acheté. Quatre teintes de `BOT_COLORS` sont parties, pas
+   deux : le cyan et le turquoise (1° du teal d'interface), l'orange brûlé (8° du signal) et le
+   saumon, sur lequel une capture montre qu'un chevron orange ne se détache pas. L'écart minimal
+   d'une couleur de bot aux teintes de signal passe de **1° à 19°**.
+
+   Mesuré sur un bot bleu, de face, préréglage `bas` : le chevron couvre 575 pixels à 5 m, 143 à
+   10 m, 29 à 20 m, 2 à 40 m. La promesse « on voit l'orange avant la silhouette à 40 m » n'est
+   donc pas tenable en tir à la hanche — à cette distance le bot entier fait dix-huit pixels de
+   haut. Elle l'est jusqu'à une vingtaine de mètres, et au-delà en visée, où le champ se resserre.
 8. **Direction des dégâts et vignettage de vie basse.** `hud.js` et `style.css`.
 
 ## V2.2 — amélioration intermédiaire

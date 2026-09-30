@@ -13,7 +13,7 @@
  */
 
 import * as THREE from '../vendor/three.module.js';
-import { BOT, WEAPONS, WEAPON_ORDER } from './config.js';
+import { BOT, WEAPONS, WEAPON_ORDER, SIGNAL_ORANGE } from './config.js';
 import { moveActor } from './collision.js';
 import { Loadout, botWeaponBoxes } from './weapons.js';
 import { mergeBoxGeometry } from './world.js';
@@ -405,14 +405,36 @@ export class Bot {
 const BOT_DARK = 0x2a2f38;      // bassin et jambes
 const BOT_VISOR = 0x12161c;     // fente de visière
 
-/** Torse, bassin, tête inclinée, visière — tout ce qui ne bouge pas tout seul. */
+/**
+ * Torse, bassin, tête inclinée, visière, et le chevron d'épaule.
+ *
+ * Le chevron est en ESCALIER — deux marches par épaule, l'extérieure plus
+ * basse — et non un V incliné : `mergeBoxGeometry` ne cuit qu'une rotation
+ * autour de Y, le jeu est fait de boîtes, et à quarante mètres c'est la
+ * couleur qui porte le signal, pas la forme. Il est posé sur le dessus du
+ * torse, en dedans du pivot d'épaule (0,30 m), pour que le bras ne le masque
+ * pas quand le bot vise.
+ *
+ * Il ne coûte AUCUN draw call : le buste est un maillage fusionné à couleur
+ * par sommet depuis l'étape 5, donc ajouter une pièce est une ligne de table.
+ */
 function bodyParts(color) {
-  return [
+  const parts = [
     { w: 0.62, h: 0.72, d: 0.36, x: 0, y: 1.02, z: 0, color },
     { w: 0.50, h: 0.22, d: 0.32, x: 0, y: 0.66, z: 0, color: BOT_DARK },
     { w: 0.38, h: 0.34, d: 0.36, x: 0, y: 1.56, z: 0, ry: 0.18, color },
     { w: 0.30, h: 0.10, d: 0.06, x: 0, y: 1.58, z: -0.19, color: BOT_VISOR },
   ];
+  // Une boîte noyée dans le torse ne se voit pas : chaque marche DÉBORDE, de
+  // 4 cm devant et derrière (d = 0,44 contre 0,36), la marche basse de 4 cm
+  // vers l'extérieur, la haute de 6 cm au-dessus de l'épaule. La marche
+  // intérieure étant la plus haute, les deux épaules dessinent un chevron vu
+  // de face.
+  for (const s of [-1, 1]) {
+    parts.push({ w: 0.16, h: 0.17, d: 0.44, x: s * 0.275, y: 1.250, z: 0, color: SIGNAL_ORANGE });
+    parts.push({ w: 0.16, h: 0.17, d: 0.44, x: s * 0.220, y: 1.400, z: 0, color: SIGNAL_ORANGE });
+  }
+  return parts;
 }
 
 /** Bras porte-arme : l'avant-bras, puis l'arme décalée à son point de montage. */
