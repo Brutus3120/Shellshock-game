@@ -4,7 +4,7 @@
  * Seule la mini-carte utilise un canvas 2D, rafraîchi à 15 Hz et pas à 60.
  */
 
-import { WEAPON_ORDER, WEAPONS } from './config.js';
+import { WEAPONS, SLOT_COUNT } from './config.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -39,7 +39,10 @@ export class Hud {
     this.dirs = Array.from(this.el.dirs).map((el) => ({ el, t: 0, angle: 0 }));
     this._lowHp = false;
 
-    this.el.slots.forEach((s, i) => { s.textContent = `${i + 1} ${WEAPONS[WEAPON_ORDER[i]].name}`; });
+    // Étiquettes des cases : écrites depuis l'inventaire du joueur dans update(),
+    // pas ici. La classe Hud vit toute la session et survit aux parties, alors
+    // que l'inventaire appartient à une partie.
+    this._slotIds = new Array(SLOT_COUNT).fill(null);
   }
 
   show(v) { this.root.classList.toggle('hidden', !v); }
@@ -146,6 +149,15 @@ export class Hud {
     this.el.ammoRes.textContent = w.reserve;
     this.el.ammoRow.classList.toggle('low', !w.isReloading && w.ammo <= w.def.mag * 0.25);
     this.el.reloadHint.classList.toggle('hidden', !(w.ammo === 0 && !w.isReloading));
+    // Comparaison emplacement par emplacement, sans fabriquer de chaîne : ce
+    // test tourne à chaque image et ne réécrit le DOM qu'une fois par partie.
+    for (let i = 0; i < SLOT_COUNT; i++) {
+      const id = p.loadout.slots[i].id;
+      if (id !== this._slotIds[i]) {
+        this._slotIds[i] = id;
+        this.el.slots[i].textContent = `${i + 1} ${WEAPONS[id].name}`;
+      }
+    }
     if (p.loadout.index !== this._lastSlot) {
       this._lastSlot = p.loadout.index;
       this.el.slots.forEach((s, i) => s.classList.toggle('on', i === p.loadout.index));
