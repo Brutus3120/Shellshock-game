@@ -53,7 +53,7 @@ js/
   collision.js    AABB, grille, raycast DDA, déplacement d'acteur
   player.js       état et physique du joueur
   input.js        clavier/souris, pointer lock (ZQSD + WASD + flèches)
-  weapons.js      chargeur, cadence, recharge, hitscan
+  weapons.js      chargeur, cadence, recharge, inventaire, modèles d'armes
   bots.js         perception, décision, visée, tir, déplacement
   effects.js      traceurs, étincelles, flashs et ombres de contact, en pools
   hud.js          barre de vie, munitions, score, killfeed, minimap
@@ -107,6 +107,17 @@ Ce sont les endroits où une modification « évidente » casse silencieusement 
   (`bunker`) ne déclare pas de `skyTop` et n'a donc pas de ciel — ni le draw call, ni le
   remplissage. Éclaircir un ciel, c'est éclaircir `fog` ET `skyBottom` ensemble, jamais l'un des
   deux seul.
+- **Le catalogue n'est pas l'inventaire.** `WEAPON_CATALOG` est ce qui existe — dérivé de
+  `WEAPONS` par `Object.keys`, jamais recopié à la main. L'inventaire est ce qu'on porte :
+  `Loadout.slots`, exactement `SLOT_COUNT` armes, un emplacement par touche 1/2/3 et par case
+  d'ATH. Ce nombre est fixe quelle que soit la taille du catalogue. Le constructeur de `Loadout`
+  alloue ses trois `Weapon` une fois, et `equip(slots, enMain)` les réarme en place : une
+  réapparition n'alloue rien, même quand un bot change d'armes. Un identifiant inconnu ou un trio
+  incomplet **lèvent une erreur** au lancement, exprès. Les bots tirent leur trio par
+  `drawLoadout()` (trois armes distinctes, la première en main), les modèles en vue subjective
+  sont construits pour les emplacements **du joueur** et non pour le catalogue, et les étiquettes
+  des cases d'ATH viennent de son inventaire — la classe `Hud` vit toute la session, l'inventaire
+  appartient à une partie.
 - **Collision purement AABB.** Pas de mesh de collision, pas de moteur physique. Le relief est
   fait d'escaliers de boîtes, franchis par un *step-up* automatique de 0,62 m résolu par
   recherche binaire dans `moveActor`. Une rampe inclinée ne serait pas gérée.
@@ -170,6 +181,8 @@ Ce sont les endroits où une modification « évidente » casse silencieusement 
 | Envie | Fichier |
 |---|---|
 | Équilibrer une arme, la vie, la vitesse | `js/config.js` |
+| Ajouter une arme au jeu | `WEAPONS` dans `js/config.js` ; le catalogue suit seul |
+| Inventaire du joueur, tirage des bots | `DEFAULT_SLOTS` dans `js/config.js`, `drawLoadout` dans `js/weapons.js` |
 | Rendre les bots plus durs | `DIFFICULTIES` dans `js/config.js` |
 | Gagner des FPS | `QUALITY` dans `js/config.js` (`renderScale`, `fogFar`, `aoTile`) |
 | Régler l'ambiance d'une carte | `exposure`, `fog`, `skyBottom`/`skyTop` dans `js/maps.js` |

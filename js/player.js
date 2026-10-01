@@ -29,7 +29,7 @@ export class Player {
     this.health = PLAYER.maxHealth;
     this.alive = true;
     this.respawnTimer = 0;
-    this.loadout = new Loadout();
+    this.loadout = new Loadout();         // DEFAULT_SLOTS ; game.js l'équipe à l'apparition
     this.kills = 0; this.deaths = 0; this.score = 0;
     this.bobTime = 0;
     this.ads = 0;
@@ -65,7 +65,7 @@ export class Player {
     this.alive = true;
     this.crouching = false;
     this.height = PLAYER.heightStand;
-    this.loadout.reset(this.loadout.currentId);
+    this.loadout.reset();             // mêmes armes, même arme en main, munitions pleines
   }
 
   damage(amount, from) {

@@ -13,9 +13,9 @@
  */
 
 import * as THREE from '../vendor/three.module.js';
-import { BOT, WEAPONS, WEAPON_ORDER, SIGNAL_ORANGE } from './config.js';
+import { BOT, WEAPONS, SIGNAL_ORANGE } from './config.js';
 import { moveActor } from './collision.js';
-import { Loadout, botWeaponBoxes } from './weapons.js';
+import { Loadout, drawLoadout, botWeaponBoxes } from './weapons.js';
 import { mergeBoxGeometry } from './world.js';
 
 const V = () => ({ x: 0, y: 0, z: 0 });
@@ -40,7 +40,10 @@ export class Bot {
     this.respawnTimer = 0;
     this.kills = 0; this.deaths = 0; this.score = 0;
 
-    this.loadout = new Loadout(WEAPON_ORDER[(Math.random() * 3) | 0]);
+    // Trois armes distinctes tirées du catalogue, la première en main. Les
+    // archétypes remplaceront ce tirage uniforme par un tirage par profil.
+    const trio = drawLoadout();
+    this.loadout = new Loadout(trio, trio[0]);
     this.state = 'patrol';
     this.target = null;
     this.lastSeen = V();
@@ -80,7 +83,8 @@ export class Bot {
     this.target = null;
     this.hasLastSeen = false;
     this.goal = null;
-    this.loadout.reset(WEAPON_ORDER[(Math.random() * 3) | 0]);
+    const trio = drawLoadout();          // nouveau trio à chaque vie, sans allocation
+    this.loadout.equip(trio, trio[0]);
     this.mesh.visible = true;
   }
 

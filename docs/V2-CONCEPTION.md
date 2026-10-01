@@ -611,9 +611,20 @@ Aucune refonte. Le jeu reste jouable à chaque étape.
 
 ## V2.2 — amélioration intermédiaire
 
-9. **Séparation catalogue / inventaire.** `WEAPON_CATALOG` remplace l'usage double de
-   `WEAPON_ORDER` ; `Loadout` reçoit une liste de trois identifiants au lieu de tout instancier.
-   Les `(Math.random() * 3) | 0` de `bots.js` disparaissent. C'est le prérequis de tout ce qui suit.
+9. ~~**Séparation catalogue / inventaire.**~~ **Fait**, sans aucun changement visible — c'était
+   le critère. `WEAPON_CATALOG` est **dérivé** de `WEAPONS` (`Object.keys`) et non recopié, donc il
+   ne peut pas en diverger ; `SLOT_COUNT = 3` nomme le nombre d'emplacements, distinct de la taille
+   du catalogue ; `DEFAULT_SLOTS` est l'inventaire du joueur jusqu'à l'écran d'équipement.
+   `Loadout` alloue ses trois objets `Weapon` une fois et `equip()` les réarme en place : vérifié,
+   les mêmes objets survivent à cinquante réapparitions d'un bot. Un identifiant inconnu ou un
+   trio incomplet lèvent une erreur au lieu de tirer en silence avec `undefined`.
+   Les deux `(Math.random() * 3) | 0` de `bots.js` sont remplacés par `drawLoadout()`, un
+   Fisher-Yates partiel : trois armes distinctes, la première en main. Sur 3 000 tirages l'arme en
+   main se répartit 1007 / 957 / 1036, la distribution d'avant ; sur un catalogue factice de neuf
+   armes, 20 000 trios tous distincts et les neuf vues, fréquences entre 6579 et 6741 pour 6667
+   attendues. Les modèles en vue subjective sont construits pour les emplacements du joueur, pas
+   pour le catalogue. `settings.weapon` garde son sens (l'arme en main au départ) : le tableau de
+   trois identifiants et sa migration appartiennent à l'écran d'équipement (entrée 17).
 10. **Les quatre armes hitscan nouvelles** : Éclisse-2, Guêpe-45, Tambour-7, Prisme. Définitions
     dans `config.js`, profils sonores associés, modèles en vue subjective.
 11. **Modèles d'armes retravaillés** — les neuf, avec une fonction de construction par arme au lieu
@@ -733,8 +744,8 @@ Les dix premières choses à faire, dans l'ordre, en évitant de refaire ce qui 
 6. ~~**Ombres de contact**~~ (`effects.js`). **Fait** : ancre les acteurs au sol sur tous les
    préréglages, et rend la hauteur d'un saut lisible — l'ombre s'élargit et pâlit quand l'acteur
    monte, disparaît au-delà de 2,2 m.
-7. **Séparation catalogue / inventaire** (`config.js`, `weapons.js`, `bots.js`). Prérequis
-   obligatoire des nouvelles armes ; c'est aussi ce qui fait disparaître les `(Math.random()*3)|0`.
+7. ~~**Séparation catalogue / inventaire**~~ (`config.js`, `weapons.js`, `bots.js`). **Fait** :
+   les `(Math.random()*3)|0` ont disparu, et le tirage des bots est éprouvé sur neuf armes.
 8. **Quatre armes hitscan nouvelles + modèles retravaillés** (`config.js`, `weapons.js`).
    Le gros du gain de variété, sans toucher au moteur de tir.
 9. **Animations d'arme** (`game.js`). Recul, marche, rechargement, changement — le poids se

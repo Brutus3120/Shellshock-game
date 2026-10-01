@@ -7,7 +7,7 @@
  */
 
 import * as THREE from '../vendor/three.module.js';
-import { PLAYER, BOT_NAMES, BOT_COLORS, DIFFICULTIES, QUALITY, PICKUP, TICK_MAX, WEAPON_ORDER } from './config.js';
+import { PLAYER, BOT_NAMES, BOT_COLORS, DIFFICULTIES, QUALITY, PICKUP, TICK_MAX, DEFAULT_SLOTS } from './config.js';
 import { buildMapData } from './maps.js';
 import { buildWorld, buildSky, setupLights } from './world.js';
 import { Player } from './player.js';
@@ -110,7 +110,7 @@ export class Game {
 
   _setupActors() {
     this.player = new Player('Vous');
-    this.player.loadout.reset(this.opts.weapon);
+    this.player.loadout.equip(DEFAULT_SLOTS, this.opts.weapon);
     this.bots = [];
     const names = shuffle(BOT_NAMES.slice());
     for (let i = 0; i < this.opts.botCount; i++) {
@@ -153,8 +153,12 @@ export class Game {
     const l = new THREE.DirectionalLight(0xffffff, 2.4);
     l.position.set(1, 2, 1);
     this.vmScene.add(l);
+    // Un modèle par emplacement du JOUEUR, pas par arme du catalogue : ses
+    // emplacements ne changent pas pendant une partie, et à neuf armes on n'en
+    // construit toujours que trois.
     this.viewModels = {};
-    for (const id of WEAPON_ORDER) {
+    for (const w of this.player.loadout.slots) {
+      const id = w.id;
       const m = createViewModel(id);
       m.scale.setScalar(0.88);
       m.visible = false;
@@ -220,7 +224,7 @@ export class Game {
     const [x, y, z] = best;
     const yaw = Math.atan2(x, z);             // orienté vers le centre de la carte
     actor.spawn(x, y + 0.05, z, yaw);
-    if (initial && actor === this.player) this.player.loadout.reset(this.opts.weapon);
+    if (initial && actor === this.player) this.player.loadout.equip(DEFAULT_SLOTS, this.opts.weapon);
   }
 
   /** Hauteur du sol, sondée sous le plafond éventuel de la carte. */
@@ -468,7 +472,8 @@ export class Game {
   }
 
   updateViewModel() {
-    for (const id of WEAPON_ORDER) this.viewModels[id].visible = (id === this.player.loadout.currentId);
+    const cur = this.player.loadout.currentId;
+    for (const id in this.viewModels) this.viewModels[id].visible = (id === cur);
   }
 
   updatePickups(dt) {

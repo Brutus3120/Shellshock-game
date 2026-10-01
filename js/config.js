@@ -121,7 +121,23 @@ export const WEAPONS = {
   },
 };
 
-export const WEAPON_ORDER = ['rafale', 'lynx', 'broyeur'];
+/**
+ * Catalogue et inventaire sont deux choses différentes, et le code les a
+ * longtemps confondues dans une seule constante.
+ *
+ * Le CATALOGUE est ce qui existe : toutes les armes du jeu. Il est dérivé de
+ * WEAPONS et non recopié, donc il ne peut pas en diverger ; l'ordre
+ * d'insertion des clés lui donne un ordre stable pour les menus.
+ *
+ * L'INVENTAIRE est ce qu'on porte : SLOT_COUNT emplacements, un par touche
+ * 1/2/3 et par case d'ATH. Ce nombre est fixe par conception, quelle que soit
+ * la taille du catalogue (voir Loadout dans weapons.js).
+ */
+export const WEAPON_CATALOG = Object.keys(WEAPONS);
+export const SLOT_COUNT = 3;
+
+/** Inventaire du joueur, en attendant l'écran d'équipement du menu. */
+export const DEFAULT_SLOTS = ['rafale', 'lynx', 'broyeur'];
 
 /** Trois niveaux de difficulté pour les bots. */
 export const DIFFICULTIES = {
