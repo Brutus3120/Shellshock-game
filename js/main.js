@@ -75,7 +75,9 @@ function armClickToPlay() {
     document.removeEventListener('mousedown', handler);
     clickArmed = false;
     Sfx.resumeAudio();
-    game.input.requestLock();
+    // La partie a pu disparaître entre l'armement et le clic : un retour au
+    // menu principal fait game = null, et le clic suivant tombait ici.
+    if (game) game.input.requestLock();
   };
   document.addEventListener('mousedown', handler);
 }

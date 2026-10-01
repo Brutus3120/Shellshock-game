@@ -7,9 +7,9 @@
  */
 
 import * as THREE from '../vendor/three.module.js';
-import { PLAYER, BOT_NAMES, BOT_COLORS, DIFFICULTIES, QUALITY, PICKUP, TICK_MAX, WEAPON_ORDER } from './config.js';
+import { PLAYER, BOT_NAMES, BOT_COLORS, DIFFICULTIES, QUALITY, PICKUP, TICK_MAX, DEFAULT_SLOTS } from './config.js';
 import { buildMapData } from './maps.js';
-import { buildWorld, setupLights } from './world.js';
+import { buildWorld, buildSky, setupLights } from './world.js';
 import { Player } from './player.js';
 import { Bot } from './bots.js';
 import { Effects } from './effects.js';
@@ -19,6 +19,11 @@ import { Input, KEY } from './input.js';
 import * as Sfx from './audio.js';
 
 const TMP = { x: 0, y: 0, z: 0 };
+const MUZZLE = { x: 0, y: 0, z: 0 };   // sortie réutilisée de muzzlePosition
+const DIR = { x: 0, y: 0, z: 0 };      // direction non dispersée, pour le flash
+
+/** Hauteur au-delà de laquelle un acteur n'a plus d'ombre de contact (m). */
+const SHADOW_FADE = 2.2;
 
 export class Game {
   constructor(canvas, opts, settings, hud) {
@@ -69,13 +74,21 @@ export class Game {
     });
     this.renderer.setClearColor(0x000000, 1);
     this.renderer.autoClear = false;
+    // Courbe filmique : les hautes lumières roulent au lieu de brûler, et les
+    // teintes saturées cessent de virer en s'éclairant. L'exposition, elle, est
+    // posée par carte dans _setupWorld — mapData n'existe pas encore ici.
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.shadowMap.enabled = this.quality.shadows;
     if (this.quality.shadows) this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    // En préréglage haut les vraies ombres portées existent déjà : l'ombre de
+    // contact s'y ajoute discrètement au lieu de noircir deux fois.
+    this.shadowStrength = this.quality.shadows ? 0.55 : 1;
   }
 
   _setupWorld() {
     this.mapData = buildMapData(this.opts.map);
-    this.world = buildWorld(this.mapData);
+    this.renderer.toneMappingExposure = this.mapData.exposure ?? 1;
+    this.world = buildWorld(this.mapData, this.quality);
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(this.mapData.sky);
@@ -84,6 +97,12 @@ export class Game {
     this.scene.fog = new THREE.Fog(this.mapData.fog, this.quality.fogFar * 0.45, this.quality.fogFar);
     this.scene.add(this.world.mesh);
     if (this.quality.shadows) { this.world.mesh.receiveShadow = true; this.world.mesh.castShadow = true; }
+
+    // Ciel : seulement pour les cartes qui en déclarent un. Une carte couverte
+    // comme le Bunker n'en voit jamais, ce serait un draw call et un écran de
+    // remplissage pour rien.
+    this.sky = this.mapData.skyTop ? buildSky(this.mapData, this.quality.fogFar) : null;
+    if (this.sky) this.scene.add(this.sky);
     this.lights = setupLights(this.scene, this.mapData, this.quality.shadows);
 
     this.camera = new THREE.PerspectiveCamera(this.settings.fov, 1, 0.08, this.quality.fogFar + 40);
@@ -91,7 +110,7 @@ export class Game {
 
   _setupActors() {
     this.player = new Player('Vous');
-    this.player.loadout.reset(this.opts.weapon);
+    this.player.loadout.equip(DEFAULT_SLOTS, this.opts.weapon);
     this.bots = [];
     const names = shuffle(BOT_NAMES.slice());
     for (let i = 0; i < this.opts.botCount; i++) {
@@ -134,8 +153,12 @@ export class Game {
     const l = new THREE.DirectionalLight(0xffffff, 2.4);
     l.position.set(1, 2, 1);
     this.vmScene.add(l);
+    // Un modèle par emplacement du JOUEUR, pas par arme du catalogue : ses
+    // emplacements ne changent pas pendant une partie, et à neuf armes on n'en
+    // construit toujours que trois.
     this.viewModels = {};
-    for (const id of WEAPON_ORDER) {
+    for (const w of this.player.loadout.slots) {
+      const id = w.id;
       const m = createViewModel(id);
       m.scale.setScalar(0.88);
       m.visible = false;
@@ -143,6 +166,7 @@ export class Game {
       this.viewModels[id] = m;
     }
     this.vmRecoil = 0;
+    this.vmFlash = 0;        // secondes restantes d'allumage du flash de bouche
   }
 
   resize() {
@@ -200,7 +224,7 @@ export class Game {
     const [x, y, z] = best;
     const yaw = Math.atan2(x, z);             // orienté vers le centre de la carte
     actor.spawn(x, y + 0.05, z, yaw);
-    if (initial && actor === this.player) this.player.loadout.reset(this.opts.weapon);
+    if (initial && actor === this.player) this.player.loadout.equip(DEFAULT_SLOTS, this.opts.weapon);
   }
 
   /** Hauteur du sol, sondée sous le plafond éventuel de la carte. */
@@ -250,6 +274,17 @@ export class Game {
       }
     }
 
+    // Flash de bouche : UN par coup, donc hors de la boucle sur les plombs,
+    // sinon le Broyeur-12 en allumerait neuf d'un coup.
+    if (isPlayer) {
+      this.vmFlash = def.muzzle.life;
+    } else {
+      DIR.x = bx; DIR.y = by; DIR.z = bz;
+      const m = this.muzzlePosition(shooter, false, DIR);
+      const c = this.camera.position;
+      this.effects.addMuzzle(m.x, m.y, m.z, c.x, c.y, c.z, def.muzzle);
+    }
+
     if (isPlayer) {
       const kick = def.recoil * (shooter.ads > 0.5 ? 0.65 : 1) * (shooter.crouching ? 0.8 : 1);
       shooter.addRecoil(kick * 0.012, (Math.random() - 0.5) * kick * 0.006);
@@ -259,17 +294,29 @@ export class Game {
     }
   }
 
+  /**
+   * Point d'où part visuellement le coup. Écrit dans un objet réutilisé : la
+   * valeur est consommée tout de suite par l'appelant, et un tir de fusil à
+   * pompe appelle cette fonction dix fois.
+   */
   muzzlePosition(shooter, isPlayer, d) {
+    const m = MUZZLE;
     if (isPlayer) {
       // Légèrement décalé pour que la traçante semble sortir de l'arme tenue.
       const rx = -Math.cos(shooter.viewYaw), rz = Math.sin(shooter.viewYaw);
-      return {
-        x: shooter.pos.x + rx * 0.22 + d.x * 0.6,
-        y: shooter.eyeY - 0.14 + d.y * 0.6,
-        z: shooter.pos.z + rz * 0.22 + d.z * 0.6,
-      };
+      m.x = shooter.pos.x + rx * 0.22 + d.x * 0.6;
+      m.y = shooter.eyeY - 0.14 + d.y * 0.6;
+      m.z = shooter.pos.z + rz * 0.22 + d.z * 0.6;
+    } else {
+      // Le bot porte son arme sur le bras droit, à 1,18 m et 0,30 m sur le côté
+      // (voir buildBotMesh). Partir des yeux ferait sortir le coup du visage —
+      // invisible avec une traçante fine, flagrant avec un flash de bouche.
+      const rx = Math.cos(shooter.yaw), rz = -Math.sin(shooter.yaw);
+      m.x = shooter.pos.x + rx * 0.30 + d.x * 0.62;
+      m.y = shooter.pos.y + 1.18 + d.y * 0.62;
+      m.z = shooter.pos.z + rz * 0.30 + d.z * 0.62;
     }
-    return { x: shooter.pos.x + d.x * 0.5, y: shooter.eyeY - 0.1 + d.y * 0.5, z: shooter.pos.z + d.z * 0.5 };
+    return m;
   }
 
   traceShot(shooter, ox, oy, oz, dx, dy, dz, def, damageMul) {
@@ -293,7 +340,20 @@ export class Game {
       const killed = victim.damage(dmg, shooter);
 
       this.effects.addImpact(ox + dx * bestT, hy, oz + dz * bestT, -dx, -dy, -dz, victim.color || 0xff6b6b, 4);
-      if (victim === this.player) { this.hud.damageFlash(); Sfx.sfxImpact(0); }
+      if (victim === this.player) {
+        this.hud.damageFlash();
+        // Direction du coup, dans le repère de la CAMÉRA et non du monde :
+        // avant = (-sin, -cos), droite = (cos, -sin) pour un lacet de vue.
+        // L'angle vaut 0 droit devant et croît vers la droite, ce qui est
+        // exactement le sens de rotate() en CSS — rien à convertir côté ATH.
+        const ddx = shooter.pos.x - victim.pos.x, ddz = shooter.pos.z - victim.pos.z;
+        if (ddx || ddz) {
+          const vy = this.player.viewYaw;
+          const sn = Math.sin(vy), cs = Math.cos(vy);
+          this.hud.damageFrom(Math.atan2(ddx * cs - ddz * sn, -ddx * sn - ddz * cs) * 180 / Math.PI);
+        }
+        Sfx.sfxImpact(0);
+      }
       if (shooter === this.player && head && !killed) Sfx.sfxHeadshot();
       if (killed) this.registerKill(shooter, victim, def);
       return { dist: bestT, hitActor: true, killed };
@@ -354,6 +414,7 @@ export class Game {
         b.syncMesh();
       }
       if (!this.player.alive && this.player.respawnTimer <= 0) this.respawnActor(this.player);
+      this.updateShadows();
 
       this.updatePickups(dt);
       this.effects.update(dt);
@@ -390,7 +451,9 @@ export class Game {
     else if (input.hit(...KEY.w2)) switched = p.loadout.select(1);
     else if (input.hit(...KEY.w3)) switched = p.loadout.select(2);
     else if (input.wheel !== 0) switched = p.loadout.cycle(input.wheel > 0 ? 1 : -1);
-    if (switched) { Sfx.sfxSwitch(); this.updateViewModel(); }
+    // Changer d'arme coupe le flash en cours : sans ça, la nouvelle arme
+    // s'allumerait pour un coup qu'elle n'a pas tiré.
+    if (switched) { this.vmFlash = 0; Sfx.sfxSwitch(); this.updateViewModel(); }
 
     const w = p.loadout.current;
     if (input.hit(...KEY.reload) && w.startReload()) Sfx.sfxReload();
@@ -409,7 +472,8 @@ export class Game {
   }
 
   updateViewModel() {
-    for (const id of WEAPON_ORDER) this.viewModels[id].visible = (id === this.player.loadout.currentId);
+    const cur = this.player.loadout.currentId;
+    for (const id in this.viewModels) this.viewModels[id].visible = (id === cur);
   }
 
   updatePickups(dt) {
@@ -439,6 +503,37 @@ export class Game {
       }
       void p;
     }
+  }
+
+  /**
+   * Ombres de contact : un disque sombre sous chaque acteur vivant, tous dans
+   * le même maillage, donc un seul draw call. C'est ce qui ancre les
+   * personnages au sol sur les préréglages où les ombres portées sont coupées,
+   * c'est-à-dire sur la cible réelle du projet.
+   *
+   * Elles portent aussi une information que rien d'autre ne donne : un bot qui
+   * saute voit son ombre s'éloigner et pâlir. Sans elles, sa hauteur ne se lit
+   * nulle part.
+   */
+  updateShadows() {
+    let n = 0;
+    for (const a of this.actors) {
+      if (!a.alive) continue;
+      // Sol sous l'acteur. Au contact, ses pieds SONT le sol et la sonde est
+      // inutile — c'est le cas la plupart du temps. En l'air, on descend depuis
+      // ses pieds, surtout pas depuis sampleY comme groundAt : ce rayon-là
+      // trouverait le toit sous lequel il se tient.
+      const gy = a.onGround
+        ? a.pos.y
+        : this.world.collision.groundHeight(a.pos.x, a.pos.z, a.pos.y + 0.1);
+      const h = a.pos.y - gy;
+      if (h > SHADOW_FADE || h < -0.5) continue;     // trop haut, ou sol introuvable
+      const t = Math.max(0, h) / SHADOW_FADE;
+      this.effects.setShadow(n++, a.pos.x, gy + 0.02, a.pos.z,
+        a.radius * (1.75 + t * 0.9),                 // l'ombre s'élargit en montant
+        this.shadowStrength * (1 - t) * (1 - t));    // et s'efface, plus vite que linéairement
+    }
+    this.effects.hideShadowsFrom(n);
   }
 
   updateCamera(dt) {
@@ -486,11 +581,33 @@ export class Game {
       // Un léger biais de lacet donne du volume à l'arme sans coûter un polygone.
       vm.rotation.set(this.vmRecoil * 0.25 + reloadDip * 0.9, 0.10 * (1 - ads) - ads * 0.02, reloadDip * 0.5);
       vm.visible = p.alive;
+
+      // Flash de bouche : allumé par fireShot, éteint ici. L'étoile est un
+      // enfant de l'arme, donc elle suit déjà le recul et le balancement.
+      const flash = vm.userData.flash;
+      if (flash) {
+        if (this.vmFlash > 0) {
+          if (!flash.visible) {
+            // Nouvelle salve : on retire l'étoile pour que deux coups d'affilée
+            // ne se superposent pas exactement.
+            flash.rotation.z = Math.random() * Math.PI * 2;
+            flash.scale.setScalar(0.85 + Math.random() * 0.3);
+          }
+          flash.visible = true;
+          this.vmFlash -= dt;
+        } else if (flash.visible) {
+          flash.visible = false;
+        }
+      }
     }
   }
 
   render() {
     const r = this.renderer;
+    // Le ciel suit la caméra : sinon le joueur en sort au bord d'une grande
+    // carte. Ici et non dans updateCamera, pour rester juste même en pause,
+    // quand la simulation ne tourne plus mais que l'on dessine encore.
+    if (this.sky) this.sky.position.copy(this.camera.position);
     r.clear();
     r.render(this.scene, this.camera);
     if (this.player.alive) {
