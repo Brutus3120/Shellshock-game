@@ -690,19 +690,28 @@ ambitieuses et méritent une base déjà stabilisée.
 
 # Vérification
 
-À chaque étape, la même procédure, celle que `CLAUDE.md` impose déjà :
+À chaque étape, la même procédure, celle que `CLAUDE.md` impose déjà. Elle n'est plus à écrire à
+la main : les outils de `tools/` la portent, et c'est leur raison d'être.
 
-Lancer `./play.sh` et ouvrir `http://127.0.0.1:8000`. Faire tourner une simulation de 60 s sur
-chacune des cartes avec Chromium (`PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers`, drapeaux
-`--use-gl=angle --use-angle=swiftshader --enable-unsafe-swiftshader`), et regarder quatre choses :
-le nombre d'éliminations sur la durée (si les bots cessent de s'entretuer, la navigation est
-cassée), les bots immobiles au point d'apparition, les acteurs passés sous le sol
-(`pos.y < -30` déclenche déjà une mort), et la console.
+```bash
+node tools/geometrie.mjs     # deux secondes, sans navigateur
+node tools/simulation.mjs    # 60 s de jeu sur les quatre cartes
+node tools/captures.mjs      # un avant/après en images, --flash pour le tir
+```
 
-Trois mesures à relever avant et après chaque étape : `renderer.info.render.calls` (la carte doit
-rester à 1 draw call, les bots doivent descendre), `renderer.info.render.triangles`, et le compteur
-d'images par seconde du HUD sur le préréglage `bas`, qui est la vraie cible du projet.
+`simulation.mjs` regarde les quatre choses qui comptent et sort en erreur si l'une lâche : le
+nombre d'éliminations sur la durée (si les bots cessent de s'entretuer, la navigation est cassée),
+les bots immobiles au point d'apparition, les acteurs passés sous le sol (`pos.y < -30` déclenche
+déjà une mort), et la console. Il relève au passage les draw calls du décor seul — la carte doit
+rester à 1 — et les triangles.
 
-Pour les cartes, un contrôle supplémentaire : compter les nœuds du graphe de navigation avant et
-après l'ajout de détail. Une chute brutale signale qu'un élément décoratif bloque une zone
-praticable.
+**Le nombre de nœuds de navigation est le chiffre à surveiller**, et `geometrie.mjs` le donne sans
+navigateur. Il ne dépend que de la collision : toucher au rendu ne doit pas le faire bouger d'une
+unité. Une chute signale qu'un élément décoratif bloque une zone praticable, donc des bots qui
+n'iront plus nulle part.
+
+Deux pièges que `tools/README.md` détaille, parce qu'ils faussent les mesures sans prévenir :
+`renderer.info` ne retient que le dernier `render()`, et le jeu en fait deux par image, donc lire
+les draw calls après coup mesure l'arme ; et `TICK_MAX` plafonne le pas de simulation, si bien
+qu'en rendu logiciel soixante secondes d'horloge ne font que trente secondes de jeu — on attend
+sur `timeLeft`, jamais sur un `setTimeout`.
