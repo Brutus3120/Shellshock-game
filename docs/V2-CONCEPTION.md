@@ -559,7 +559,11 @@ Aucune refonte. Le jeu reste jouable à chaque étape.
    arme (`muzzle` dans `config.js`). Mesuré : **+1 draw call**, 0 allocation par tir. Au passage,
    `muzzlePosition` faisait partir le coup du visage des bots au lieu de leur arme — invisible avec
    une traçante fine, flagrant avec un flash.
-5. **Ombres de contact.** Un maillage unique de quads, mis à jour depuis la boucle de `game.js`.
+5. ~~**Ombres de contact.**~~ **Fait** — détail au n°6 des priorités ci-dessous. Un maillage
+   unique, mis à jour depuis la boucle de `game.js`, mais un **disque** et non un quad : un quad
+   n'a que quatre sommets, tous sur son pourtour, donc aucun endroit où poser le sombre. Il
+   sortirait en aplat, un autocollant plutôt qu'une ombre. Le disque garde des quads là où ils
+   servent — l'anneau de dégradé entre le centre sombre et le pourtour clair.
 6. ~~**Suppression des allocations de `THREE.Color` par tir.**~~ **Fait**, avec l'étape 4 : cache
    `hex → {r,g,b}` dans `effects.js`, rempli via `THREE.Color` pour conserver la conversion
    sRGB → linéaire de r169. `muzzlePosition` écrit désormais dans un objet réutilisé au lieu d'en
@@ -698,8 +702,45 @@ Les dix premières choses à faire, dans l'ordre, en évitant de refaire ce qui 
    perdre cette lecture.
    Au passage, ce pivot était **inversé** : `syncMesh` posait `rotation.x = -pitch` alors que
    `fireShot` tire vers `by = sin(pitch)`. Un bot visant un toit montrait le sol. Corrigé.
-6. **Ombres de contact** (`effects.js`). Ancre les acteurs au sol sur tous les préréglages, y
-   compris `bas`.
+6. ~~**Ombres de contact** (`effects.js`).~~ **Fait.** Un disque sombre sous chaque acteur
+   vivant, tous dans un seul maillage, en `MultiplyBlending` — l'**inverse exact du flash de
+   bouche** du n°2 : là où l'additif ne dessine pas le noir, le multiply ne dessine pas le blanc,
+   donc centre sombre et pourtour blanc, et le dégradé reste dans les sommets. Aucune texture.
+   Multiply n'est pas qu'un raccourci : il retire une fraction de la lumière au lieu d'ajouter du
+   noir, donc l'ombre suit la clarté du sol au lieu de poser la même tache partout. C'est mesuré —
+   à force identique, l'assombrissement au cœur vaut 40/255 sur le sol clair du Quartier et
+   29,7/255 sur celui, sombre, du Bunker. C'est aussi, au signe près, ce que fait déjà l'occlusion
+   ambiante du n°1, qui multiplie elle aussi une couleur de sommet.
+
+   Mesuré, disques allumés puis éteints sur la même scène : **+1 draw call** (et **zéro** quand
+   aucun acteur n'en a, la plage de dessin vide étant doublée d'un `visible`), 24 triangles par
+   acteur — 288 au plus, contre 8,7k à 56k pour le décor. La passe elle-même coûte **2,3 à 3,6 µs**
+   par image pour neuf acteurs au sol, et 3,2 à 7,2 µs si on les met **tous** en l'air, ce qui
+   n'arrive jamais : la hauteur du sol ne demande une sonde de rayon que pour un acteur en l'air,
+   puisqu'au sol `pos.y` **est** le sol. Le coût de rendu, lui, **ne se mesure pas** : +0,3 % sur
+   l'Arène et −0,1 % sur la Crête, pour un écart interquartile de ±8 %. Les disques couvrent
+   0,12 % des pixels.
+
+   Deux réglages de matériau reprennent ceux du ciel pour les mêmes raisons, et un troisième leur
+   est propre : `toneMapped: false` (la courbe ACES tordrait le facteur, 0,5 n'assombrirait plus
+   de moitié), `fog: false` (le brouillard remplacerait le facteur par sa propre teinte, qui
+   éclaircit), et `transparent: true` qui ne sert pas à l'opacité mais à l'**ordre** — un multiply
+   a besoin que le sol soit déjà écrit dans le tampon.
+
+   Deux pièges, trouvés en tombant dedans, et tous deux muets. Le premier : l'**ordre des sommets**
+   doit donner une normale vers le haut. Pris à l'envers, chaque triangle regarde le sol, le disque
+   part en face arrière et n'apparaît jamais — tout en coûtant son draw call, si bien que le
+   compteur dit que tout va bien. Seule une différence de pixels, disques allumés puis éteints, le
+   révèle ; c'est ce qu'il a fallu écrire pour le voir. Le second : une **plage de dessin nulle
+   coûte quand même un draw call**, three.js n'écartant pas l'objet pour autant — d'où le `visible`
+   posé par `endShadows`.
+
+   L'ombre pâlit et s'élargit avec l'altitude (0,50 au contact, 0,27 à un mètre, éteinte à 2,2 m ;
+   rayon 0,58 m à 0,84 m) : c'est ce couple qui fait lire la hauteur, là où une tache d'intensité
+   fixe ne dirait que la position. Le rayon reste volontairement proche de l'empreinte de l'acteur
+   (0,34 m), parce qu'un disque plat déborde d'une marche sans la suivre : plus il est large, plus
+   il flotte au bord d'un escalier. Actif sur **tous** les préréglages, `bas` compris — c'est là
+   qu'il sert le plus, puisque c'est le seul sans ombres portées.
 7. **Séparation catalogue / inventaire** (`config.js`, `weapons.js`, `bots.js`). Prérequis
    obligatoire des nouvelles armes ; c'est aussi ce qui fait disparaître les `(Math.random()*3)|0`.
 8. **Quatre armes hitscan nouvelles + modèles retravaillés** (`config.js`, `weapons.js`).

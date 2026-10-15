@@ -78,7 +78,7 @@ Ce sont les endroits où une modification « évidente » casse silencieusement 
   rendu : zéro, la couleur de sommet est déjà lue par le shader. Trois conséquences à connaître :
   la collision doit être construite **avant** la géométrie (l'AO l'interroge) ; une carte compte
   désormais des dizaines de milliers de triangles au lieu de quelques centaines, ce qui reste un
-  seul draw call ; et baisser `aoTile` resserre les ombres de contact en multipliant les triangles
+  seul draw call ; et baisser `aoTile` resserre ces ombres **du décor** en multipliant les triangles
   par le carré du rapport. Une face ne peut pas être plus sombre entre deux de ses sommets : c'est
   toute la raison de la subdivision.
 - **Un bot = deux maillages, pas neuf.** `buildBotMesh` fusionne ses boîtes en deux
@@ -141,6 +141,19 @@ Ce sont les endroits où une modification « évidente » casse silencieusement 
   a la sienne accrochée à son arme, donc elle suit le recul sans code ; les bots passent par un
   pool de `effects.js`, orienté face à la caméra à l'allumage. `VM_FLASH_SCALE` réduit la première :
   les deux caméras ne regardent pas à la même distance.
+- **Les ombres de contact sont l'inverse exact du flash de bouche.** Un disque par acteur
+  vivant, tous dans un seul maillage (`effects.js`), en **`MultiplyBlending`** : là où l'additif
+  ne dessine pas le noir, le multiply ne dessine pas le **blanc**, donc le centre est sombre et le
+  pourtour blanc. Le dégradé est dans les sommets — aucune texture, un draw call. Trois réglages
+  de matériau, chacun pour une raison : `transparent: true` ne sert pas à l'opacité mais à
+  l'**ordre** (passe transparente, donc après le sol, qu'un multiply doit trouver déjà écrit) ;
+  `toneMapped: false`, sinon la courbe ACES tord le facteur et 0,5 n'assombrit plus de moitié ;
+  `fog: false`, sinon le brouillard remplace le facteur par sa propre teinte, qui éclaircit. Deux
+  pièges qui ne préviennent pas : l'**ordre des sommets** doit donner une normale vers le haut,
+  faute de quoi le disque part en face arrière et n'apparaît jamais tout en coûtant son draw call ;
+  et une **plage de dessin nulle coûte quand même un draw call**, d'où le `visible` d'`endShadows`.
+  Actives sur **tous** les préréglages, `bas` compris — c'est là qu'elles servent le plus, puisque
+  c'est le seul sans ombres portées.
 - **Pointer lock exige un geste utilisateur** et impose un délai après Échap — d'où l'écran
   « cliquer pour jouer ». `#overlay` est en `pointer-events:none`, seuls les `.screen` captent
   les clics ; l'inverse avale les clics destinés au canvas.
@@ -152,7 +165,8 @@ Ce sont les endroits où une modification « évidente » casse silencieusement 
 | Équilibrer une arme, la vie, la vitesse | `js/config.js` |
 | Rendre les bots plus durs | `DIFFICULTIES` dans `js/config.js` |
 | Gagner des FPS | `QUALITY` dans `js/config.js` (`renderScale`, `fogFar`, `aoTile`) |
-| Régler la netteté des ombres de contact | `aoTile` dans `QUALITY`, constantes `AO_*` de `js/world.js` |
+| Régler la netteté des ombres cuites du décor | `aoTile` dans `QUALITY`, constantes `AO_*` de `js/world.js` |
+| Régler les ombres de contact sous les acteurs | constantes `SHADOW_*` en tête de `js/game.js` (forme du disque : `js/effects.js`) |
 | Régler l'ambiance lumineuse d'une carte | `exposure`, `sun` et `hemi` de la carte dans `js/maps.js` |
 | Changer la couleur du ciel | `skyTop` / `skyBottom` de la carte dans `js/maps.js` |
 | Modifier ou ajouter une carte | `js/maps.js` (helpers `B`, `perimeter`, `stairs`, `building`) |

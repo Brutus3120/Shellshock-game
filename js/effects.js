@@ -1,9 +1,10 @@
 /**
  * effects.js — effets visuels, tous en pool de taille fixe.
  *
- * Deux objets de rendu au total (un LineSegments + un Points) : aucun objet
- * n'est créé ni détruit pendant la partie, donc pas de ramasse-miettes en
- * plein combat — c'est ce qui provoque les micro-saccades sur PC modeste.
+ * Quatre objets de rendu au total (un LineSegments, un Points et deux Mesh) :
+ * aucun objet n'est créé ni détruit pendant la partie, donc pas de
+ * ramasse-miettes en plein combat — c'est ce qui provoque les micro-saccades
+ * sur PC modeste.
  */
 
 import * as THREE from '../vendor/three.module.js';
@@ -13,6 +14,36 @@ const TRACERS = 48;
 const SPARKS = 160;
 const FLASHES = 16;                 // huit bots en rafale tiennent largement dedans
 const FLASH_VERTS = FLASH_SPOKES + 1;
+
+/**
+ * Ombres de contact : un disque par acteur vivant.
+ *
+ * 12 emplacements = un joueur + onze bots, le maximum du curseur de `index.html`.
+ * Au-delà, `addShadow` laisse tomber les disques en trop plutôt que d'écrire
+ * hors du tampon : un bot sans ombre reste préférable à une exception.
+ *
+ * Le disque est un éventail bordé d'un anneau de quads, et non un simple carré :
+ * un quad n'a que quatre sommets, tous sur son pourtour, donc aucun endroit où
+ * poser le sombre. Il sortirait en aplat — un autocollant, pas une ombre. Avec
+ * un centre, un anneau sombre et un pourtour clair, le dégradé est porté par
+ * les sommets, comme pour le flash de bouche. 24 triangles par acteur, soit
+ * 288 au plus sur la carte entière : négligeable devant les 8,7k à 56k du décor.
+ */
+const SHADOWS = 12;
+const SHADOW_SPOKES = 8;
+const SHADOW_VERTS = 1 + SHADOW_SPOKES * 2;      // centre + anneau sombre + pourtour
+const SHADOW_INDICES = SHADOW_SPOKES * 3 * 3;    // 1 triangle d'éventail + 2 d'anneau par rayon
+const SHADOW_CORE = 0.45;                        // rayon de l'anneau sombre, en fraction du total
+
+// Cercle unité pré-calculé : le disque est toujours horizontal et jamais tourné,
+// donc ces huit directions servent telles quelles à chaque image.
+const SHADOW_COS = new Float32Array(SHADOW_SPOKES);
+const SHADOW_SIN = new Float32Array(SHADOW_SPOKES);
+for (let s = 0; s < SHADOW_SPOKES; s++) {
+  const a = (s / SHADOW_SPOKES) * Math.PI * 2;
+  SHADOW_COS[s] = Math.cos(a);
+  SHADOW_SIN[s] = Math.sin(a);
+}
 
 /**
  * Couleurs pré-converties. `new THREE.Color(hex)` applique la conversion
@@ -93,6 +124,114 @@ export class Effects {
     this.flashes = [];
     for (let i = 0; i < FLASHES; i++) this.flashes.push({ life: 0, max: 1, r: 1, g: 1, b: 1 });
     this._flash = 0;
+
+    // --- ombres de contact ---
+    // Même procédé que le flash de bouche, exactement à l'envers. En additif, le
+    // noir ne dessine rien et le dégradé va du centre coloré vers un pourtour
+    // noir ; en MULTIPLY, c'est le BLANC qui ne dessine rien, donc le centre est
+    // sombre et le pourtour blanc. Dans les deux cas le dégradé est dans les
+    // sommets : aucune texture, et un seul draw call pour tous les acteurs.
+    //
+    // Multiply est l'opérateur juste pour une ombre, et pas seulement le plus
+    // simple : il retire une fraction de la lumière au lieu d'ajouter du noir,
+    // donc le sol garde sa teinte et un sol déjà sombre ne devient pas une
+    // tache. C'est aussi, au signe près, ce que fait l'occlusion ambiante cuite
+    // dans le décor, qui multiplie elle aussi une couleur de sommet.
+    const gg = new THREE.BufferGeometry();
+    this.gPos = new Float32Array(SHADOWS * SHADOW_VERTS * 3);
+    this.gCol = new Float32Array(SHADOWS * SHADOW_VERTS * 3);
+    const gIdx = new Uint16Array(SHADOWS * SHADOW_INDICES);
+    let gat = 0;
+    for (let i = 0; i < SHADOWS; i++) {
+      const base = i * SHADOW_VERTS;
+      const inner = base + 1, outer = base + 1 + SHADOW_SPOKES;
+      // L'ordre des sommets donne à chaque triangle une normale vers le HAUT,
+      // et c'est tout sauf un détail : inversé, la normale regarde le sol, le
+      // disque part en face arrière et n'apparaît JAMAIS — un maillage qui
+      // coûte son draw call sans dessiner un pixel. Le piège est muet : rien
+      // n'avertit, et le compte de draw calls, lui, est correct. C'est une
+      // différence de pixels, allumé puis éteint, qui le révèle.
+      for (let s = 0; s < SHADOW_SPOKES; s++) {
+        const n = (s + 1) % SHADOW_SPOKES;
+        gIdx[gat++] = base;      gIdx[gat++] = inner + n; gIdx[gat++] = inner + s;
+        gIdx[gat++] = inner + s; gIdx[gat++] = outer + n; gIdx[gat++] = outer + s;
+        gIdx[gat++] = inner + s; gIdx[gat++] = inner + n; gIdx[gat++] = outer + n;
+      }
+      // Le pourtour est blanc une fois pour toutes : en multiply il est
+      // invisible, et c'est lui qui éteint le dégradé sur le sol intact.
+      for (let s = 0; s < SHADOW_SPOKES; s++) {
+        const o = (outer + s) * 3;
+        this.gCol[o] = 1; this.gCol[o + 1] = 1; this.gCol[o + 2] = 1;
+      }
+    }
+    gg.setAttribute('position', new THREE.BufferAttribute(this.gPos, 3));
+    gg.setAttribute('color', new THREE.BufferAttribute(this.gCol, 3));
+    gg.setIndex(new THREE.BufferAttribute(gIdx, 1));
+    gg.setDrawRange(0, 0);
+    this.shadowMesh = new THREE.Mesh(gg, new THREE.MeshBasicMaterial({
+      vertexColors: true,
+      blending: THREE.MultiplyBlending,
+      // `transparent` ne sert pas à l'opacité ici, il sert à l'ORDRE : il place
+      // le disque dans la passe transparente, donc après tout l'opaque. Un
+      // multiply a besoin que le sol soit déjà dans le tampon pour l'assombrir.
+      transparent: true,
+      depthWrite: false,         // les disques ne se masquent pas entre eux
+      toneMapped: false,         // sinon la courbe ACES tord le facteur : 0,5 n'assombrit plus de moitié
+      fog: false,                // le brouillard remplacerait le facteur par sa propre teinte, qui éclaircirait
+    }));
+    this.shadowMesh.frustumCulled = false;
+    scene.add(this.shadowMesh);
+    this._shadow = 0;
+  }
+
+  // ------------------------------------------------------ ombres de contact ---
+
+  /** Ouvre la passe : les disques sont réécrits du premier au dernier. */
+  beginShadows() { this._shadow = 0; }
+
+  /**
+   * Un disque posé à plat, centré en (x, z) à la hauteur y.
+   *
+   * `strength` est l'assombrissement au centre : 0 ne touche à rien, 1 est noir.
+   * On le convertit en facteur multiplicatif, parce que c'est ce que lit le
+   * mélange — et dans ce repère c'est 1 qui est transparent, pas 0.
+   */
+  addShadow(x, y, z, radius, strength) {
+    if (this._shadow >= SHADOWS) return;
+    const i = this._shadow++;
+    const base = i * SHADOW_VERTS;
+    const k = 1 - Math.max(0, Math.min(1, strength));
+
+    let o = base * 3;
+    this.gPos[o] = x; this.gPos[o + 1] = y; this.gPos[o + 2] = z;
+    this.gCol[o] = k; this.gCol[o + 1] = k; this.gCol[o + 2] = k;
+
+    const rc = radius * SHADOW_CORE;
+    for (let s = 0; s < SHADOW_SPOKES; s++) {
+      const cs = SHADOW_COS[s], sn = SHADOW_SIN[s];
+      o = (base + 1 + s) * 3;                          // anneau sombre
+      this.gPos[o] = x + cs * rc; this.gPos[o + 1] = y; this.gPos[o + 2] = z + sn * rc;
+      this.gCol[o] = k; this.gCol[o + 1] = k; this.gCol[o + 2] = k;
+      o = (base + 1 + SHADOW_SPOKES + s) * 3;          // pourtour, déjà blanc
+      this.gPos[o] = x + cs * radius; this.gPos[o + 1] = y; this.gPos[o + 2] = z + sn * radius;
+    }
+  }
+
+  /**
+   * Ferme la passe. Les disques vivants sont compactés au début du tampon, donc
+   * une simple plage de dessin suffit à éteindre les autres : contrairement aux
+   * flashs, il n'y a rien à repeindre en couleur neutre.
+   */
+  endShadows() {
+    const g = this.shadowMesh.geometry;
+    g.setDrawRange(0, this._shadow * SHADOW_INDICES);
+    // Une plage de dessin nulle coûte quand même son draw call — mesuré : three.js
+    // n'écarte pas l'objet pour autant. `visible` le fait, lui.
+    this.shadowMesh.visible = this._shadow > 0;
+    if (this._shadow > 0) {
+      g.attributes.position.needsUpdate = true;
+      g.attributes.color.needsUpdate = true;
+    }
   }
 
   addTracer(x0, y0, z0, x1, y1, z1, color = 0xfff0b0) {
@@ -238,5 +377,7 @@ export class Effects {
     // les scènes pour libérer ce qui reste, et ne doit pas retomber dessus.
     if (this.flashMesh.parent) this.flashMesh.parent.remove(this.flashMesh);
     this.flashMesh.geometry.dispose(); this.flashMesh.material.dispose();
+    if (this.shadowMesh.parent) this.shadowMesh.parent.remove(this.shadowMesh);
+    this.shadowMesh.geometry.dispose(); this.shadowMesh.material.dispose();
   }
 }

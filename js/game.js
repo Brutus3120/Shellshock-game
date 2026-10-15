@@ -22,6 +22,16 @@ const TMP = { x: 0, y: 0, z: 0 };
 const MUZZLE = { x: 0, y: 0, z: 0 };   // sortie réutilisée de muzzlePosition
 const DIR = { x: 0, y: 0, z: 0 };      // direction non dispersée, pour le flash
 
+// Ombres de contact. Le rayon reste proche de l'empreinte de l'acteur (0,34 m) :
+// un disque plat déborde d'une marche sans la suivre, donc plus il est large,
+// plus il flotte au bord d'un escalier. SHADOW_CORE le resserre encore, et seul
+// le dégradé dépasse.
+const SHADOW_RADIUS = 0.58;   // rayon au sol, en mètres
+const SHADOW_DARK = 0.50;     // assombrissement au centre, au contact
+const SHADOW_AIR = 2.2;       // hauteur à laquelle l'ombre s'éteint (un saut culmine à 1,0 m)
+const SHADOW_GROW = 0.45;     // élargissement de la pénombre, par mètre d'altitude
+const SHADOW_LIFT = 0.02;     // décollement du sol, contre le z-fighting
+
 export class Game {
   constructor(canvas, opts, settings, hud) {
     this.canvas = canvas;
@@ -221,6 +231,46 @@ export class Game {
     if (initial && actor === this.player) this.player.loadout.reset(this.opts.weapon);
   }
 
+  /**
+   * Ombres de contact : un disque sombre sous chaque acteur vivant.
+   *
+   * Elles ne doublent pas les ombres portées — seul le préréglage `haut` en a —
+   * elles répondent à un autre défaut, et sur les trois préréglages. Sans rien
+   * sous les pieds, un bot qui saute, descend un escalier ou s'arrête au bord
+   * d'un toit paraît flotter, et on ne sait plus à quelle hauteur il est. C'est
+   * la seule chose qui ancre les acteurs en `bas`, où il n'y a aucune ombre.
+   *
+   * Le sol ne coûte une sonde que pour les acteurs EN L'AIR : au sol, `pos.y`
+   * est déjà la hauteur du sol, puisque c'est là que la collision les a posés.
+   * C'est ce qui rend la passe gratuite en pratique — il est rare que plus d'un
+   * acteur soit en l'air — et c'est aussi pourquoi la sonde est courte : au-delà
+   * de SHADOW_AIR l'ombre serait éteinte, donc inutile à chercher.
+   */
+  _updateShadows() {
+    const fx = this.effects;
+    fx.beginShadows();
+    for (const a of this.actors) {
+      if (!a.alive) continue;
+      let gy;
+      if (a.onGround) {
+        gy = a.pos.y;
+      } else {
+        const from = a.pos.y + SHADOW_LIFT;
+        const hit = this.world.collision.raycast(a.pos.x, from, a.pos.z, 0, -1, 0, SHADOW_AIR);
+        if (!hit) continue;                 // trop haut, ou au-dessus du vide
+        gy = from - hit.dist;
+      }
+      const h = Math.max(0, a.pos.y - gy);
+      const fade = 1 - h / SHADOW_AIR;
+      if (fade <= 0) continue;
+      // En montant, l'ombre pâlit et s'élargit : c'est ce couple qui fait lire
+      // l'altitude, là où une tache d'intensité fixe ne dirait que la position.
+      fx.addShadow(a.pos.x, gy + SHADOW_LIFT, a.pos.z,
+                   SHADOW_RADIUS * (1 + h * SHADOW_GROW), SHADOW_DARK * fade);
+    }
+    fx.endShadows();
+  }
+
   /** Hauteur du sol, sondée sous le plafond éventuel de la carte. */
   groundAt(x, z) {
     return this.world.collision.groundHeight(x, z, this.mapData.sampleY || 40);
@@ -398,6 +448,7 @@ export class Game {
 
       this.updatePickups(dt);
       this.effects.update(dt);
+      this._updateShadows();
 
       if (this.duration > 0) {
         this.timeLeft -= dt;
