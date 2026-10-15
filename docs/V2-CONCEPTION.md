@@ -530,8 +530,22 @@ Aucune refonte. Le jeu reste jouable à chaque étape.
    les tons moyens. Coût relevé à scène et caméra identiques, en alternant les blocs : 1,0 à
    3,2 % d'images par seconde sous SwiftShader, majorant pessimiste pour un GPU intégré.
    Un seul draw call, triangles et graphe de navigation inchangés.
-2. **Ciel en dégradé.** Un `SphereGeometry` inversé à couleur par sommet, deux teintes lues dans
-   la carte. Ajouté dans `_setupWorld`, un draw call.
+2. ~~**Ciel en dégradé.**~~ **Fait.** `buildSky` dans `world.js` : `SphereGeometry` retournée à
+   couleur par sommet, `skyTop` / `skyBottom` lues dans la carte, ajoutée dans `_setupWorld`.
+   Mesuré : **un draw call de plus**, 8 → 9 sur les vues de `tools/captures.mjs`, graphe de
+   navigation inchangé. Trois réglages de matériau font tout, et aucun n'est décoratif :
+   `fog: false` (à la distance de la sphère le facteur de brouillard vaut 1, le dégradé serait
+   repeint en aplat), `toneMapped: false` (le brouillard ne l'est pas non plus, et un ciel
+   tone-mappé se décalerait de lui à chaque changement d'exposition — c'est le prolongement direct
+   de l'étape 1 ci-dessus), `depthWrite: false` avec `renderOrder = -1`. La sphère est recentrée
+   sur la caméra à chaque image, sinon on en atteint le bord. `skyBottom` reprend la couleur de
+   brouillard de la carte : c'est ce raccord qui supprime la ligne d'horizon.
+   Coût mesuré, sphère allumée puis éteinte sur la même scène en alternant l'ordre des blocs :
+   **−12 % d'images par seconde sur l'Arène, −10 % sur la Crête**, sous rendu logiciel où chaque
+   pixel de fond se paie au processeur. C'est le poste le plus cher des quatre étapes, et il est
+   à revérifier sur une vraie machine. Dessiner la sphère en dernier pour profiter du test de
+   profondeur a été mesuré aussi : les deux cartes se contredisent, donc aucun gain démontrable,
+   et on garde l'ordre conventionnel — celui que three.js emploie lui-même pour ses fonds.
 3. ~~**Occlusion ambiante cuite.**~~ **Fait.** `buildWorld` construit la collision d'abord, puis
    découpe chaque face en quads d'au plus `aoTile` mètres et assombrit chaque nœud selon le solide
    qui l'entoure (8 sondes `collision.overlaps`, plus un test grossier qui évite les sondes en
@@ -668,8 +682,8 @@ Les dix premières choses à faire, dans l'ordre, en évitant de refaire ce qui 
    de route ci-dessus.
 3. ~~**Tone mapping ACES + exposition par carte** (`game.js`, `maps.js`).~~ **Fait** — détail au
    n°1 de la feuille de route ci-dessus.
-4. **Ciel en dégradé** (`world.js`). Un draw call, et les cartes extérieures cessent d'être des
-   boîtes.
+4. ~~**Ciel en dégradé** (`world.js`).~~ **Fait** — détail au n°2 de la feuille de route
+   ci-dessus.
 5. **Fusion des maillages de bots** (`bots.js`). Environ 70 draw calls récupérés, qui financent
    tout le reste.
 6. **Ombres de contact** (`effects.js`). Ancre les acteurs au sol sur tous les préréglages, y

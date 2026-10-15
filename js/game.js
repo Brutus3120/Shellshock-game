@@ -9,7 +9,7 @@
 import * as THREE from '../vendor/three.module.js';
 import { PLAYER, BOT_NAMES, BOT_COLORS, DIFFICULTIES, QUALITY, PICKUP, TICK_MAX, WEAPON_ORDER } from './config.js';
 import { buildMapData } from './maps.js';
-import { buildWorld, setupLights } from './world.js';
+import { buildWorld, buildSky, setupLights } from './world.js';
 import { Player } from './player.js';
 import { Bot } from './bots.js';
 import { Effects } from './effects.js';
@@ -98,6 +98,8 @@ export class Game {
     // pas à assombrir le combat rapproché.
     this.scene.fog = new THREE.Fog(this.mapData.fog, this.quality.fogFar * 0.45, this.quality.fogFar);
     this.scene.add(this.world.mesh);
+    this.sky = buildSky(this.mapData, this.quality);
+    this.scene.add(this.sky);
     if (this.quality.shadows) { this.world.mesh.receiveShadow = true; this.world.mesh.castShadow = true; }
     this.lights = setupLights(this.scene, this.mapData, this.quality.shadows);
 
@@ -503,6 +505,9 @@ export class Game {
     const sy = (Math.random() - 0.5) * this.cameraShake;
 
     this.camera.position.set(p.pos.x + bobX, p.eyeY + bobY, p.pos.z);
+    // Le ciel reste centré sur la caméra : sans ça on finirait par en toucher
+    // le bord sur une grande carte, et il serait coupé par le plan lointain.
+    this.sky.position.copy(this.camera.position);
     this.camera.rotation.set(0, 0, 0);
     this.camera.rotation.order = 'YXZ';
     this.camera.rotation.y = p.viewYaw + sx;

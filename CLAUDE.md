@@ -112,6 +112,18 @@ Ce sont les endroits où une modification « évidente » casse silencieusement 
   Ce qu'on gagne n'est pas de la lumière, c'est de l'écart — à luminosité égale, l'écart-type de
   luminance monte de 20 % (Arène) à 40 % (Bunker). Pour accorder l'horizon, c'est `sky` et `fog`
   qu'il faut bouger, jamais `exposure`.
+- **Le ciel est un maillage, pas un fond.** Une sphère retournée à couleur par sommet
+  (`buildSky` dans `world.js`), deux teintes par carte, un draw call. Trois réglages la tiennent,
+  et chacun répare une erreur qu'on ne voit qu'en la commettant : `fog: false`, sans quoi le
+  brouillard repeint tout le dégradé en aplat à la distance où elle vit ; `toneMapped: false`,
+  parce que le brouillard ne l'est pas non plus et que le ciel doit rester dans le même espace
+  que lui, sinon l'exposition de la carte déplace l'horizon ; `depthWrite: false` avec
+  `renderOrder = -1`, pour que tout le décor passe devant. `game.js` la recentre sur la caméra à
+  chaque image, sinon on en atteint le bord sur une grande carte. **`skyBottom` reprend la couleur
+  de brouillard** : le décor lointain s'estompe vers elle, donc c'est là que le ciel la rejoint.
+  Coût : environ 10 % d'images par seconde en rendu logiciel, où chaque pixel de fond se paie au
+  processeur. C'est le poste le plus cher de la V2.1 ; si une vraie machine le confirme, c'est un
+  candidat à un réglage de `QUALITY` plutôt qu'à une constante.
 - **Additive blending obligatoire** sur traceurs, étincelles et flashs de bouche, sinon ils
   sortent en traits sombres sur fond clair.
 - **Le flash de bouche est une étoile à couleur de sommet** : un éventail de triangles dont le
@@ -134,6 +146,7 @@ Ce sont les endroits où une modification « évidente » casse silencieusement 
 | Gagner des FPS | `QUALITY` dans `js/config.js` (`renderScale`, `fogFar`, `aoTile`) |
 | Régler la netteté des ombres de contact | `aoTile` dans `QUALITY`, constantes `AO_*` de `js/world.js` |
 | Régler l'ambiance lumineuse d'une carte | `exposure`, `sun` et `hemi` de la carte dans `js/maps.js` |
+| Changer la couleur du ciel | `skyTop` / `skyBottom` de la carte dans `js/maps.js` |
 | Modifier ou ajouter une carte | `js/maps.js` (helpers `B`, `perimeter`, `stairs`, `building`) |
 | Comportement des bots | `js/bots.js` (`sense` / `think` / `aim` / `move`) |
 | Placement de l'arme à l'écran | `_setupViewModel` dans `js/game.js` |

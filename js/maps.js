@@ -106,6 +106,12 @@ function mapArene() {
     sampleY: 40,
     sun: { color: 0xffe7c4, intensity: 1.05, dir: [0.4, 1, 0.25] },
     hemi: { sky: 0x6f8fb5, ground: 0x34302c, intensity: 0.85 },
+    // Ciel en dégradé (buildSky dans world.js). `skyBottom` reprend la couleur
+    // de brouillard : le décor lointain s'estompe vers elle, donc le ciel la
+    // rejoint sans ligne de raccord. `skyTop` est la teinte du zénith, plus
+    // dense. `sky` reste la couleur d'effacement, visible seulement si la
+    // sphère ne couvre pas tout.
+    skyTop: 0x171d2b, skyBottom: 0x2a3142,
     // Exposition passée au tone mapping ACES (voir _setupRenderer dans game.js).
     // Réglée carte par carte pour garder la luminosité moyenne d'avant la
     // courbe : le ciel et le brouillard, eux, ne sont pas tone-mappés, donc
@@ -176,6 +182,7 @@ function mapQuartier() {
     sampleY: 40,
     sun: { color: 0xfff0d0, intensity: 1.0, dir: [-0.35, 1, 0.4] },
     hemi: { sky: 0x8aa0bd, ground: 0x3a352e, intensity: 0.8 },
+    skyTop: 0x232a3c, skyBottom: 0x3b4050,
     exposure: 1.05,
     size: S,
     boxes: o,
@@ -249,6 +256,7 @@ function mapBunker() {
     sampleY: H - 0.5,
     sun: { color: 0xcfe4ff, intensity: 0.75, dir: [0.2, 1, -0.3] },
     hemi: { sky: 0x8fa6ba, ground: 0x3a4048, intensity: 1.55 },
+    skyTop: 0x12171c, skyBottom: 0x1b2026,
     exposure: 1.25,
     size: S,
     boxes: o,
@@ -324,6 +332,7 @@ function mapCrete() {
     sampleY: 40,
     sun: { color: 0xffd9a0, intensity: 1.15, dir: [0.5, 0.9, -0.35] },
     hemi: { sky: 0xc9a878, ground: 0x4a3c28, intensity: 0.75 },
+    skyTop: 0x4a4a52, skyBottom: 0x6b5a44,
     exposure: 1.00,
     size: S,
     boxes: o,

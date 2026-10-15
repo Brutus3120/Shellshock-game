@@ -296,6 +296,67 @@ function buildNav(collision, size, sampleY) {
 }
 
 /**
+ * Ciel en dégradé : une sphère retournée, deux teintes lues dans la carte.
+ *
+ * Remplace l'aplat de `scene.background` sans rien coûter de plus qu'un draw
+ * call. Trois réglages de matériau font tout le travail, et chacun corrige une
+ * erreur qu'on ne voit qu'en la commettant :
+ *
+ * - `fog: false`. À la distance où vit la sphère, le facteur de brouillard vaut
+ *   1 : le dégradé serait intégralement repeint en couleur de brouillard, donc
+ *   ramené à l'aplat qu'il est censé remplacer.
+ * - `toneMapped: false`. Le brouillard n'est pas tone-mappé — three.js applique
+ *   `fog_fragment` après `tonemapping_fragment` — et l'ancien fond ne l'était
+ *   pas non plus, n'étant qu'une couleur d'effacement. Un ciel tone-mappé se
+ *   décalerait donc du brouillard auquel il doit se raccorder, et l'exposition
+ *   de chaque carte déplacerait l'horizon. Voir l'invariant dans CLAUDE.md.
+ * - `depthWrite: false` et `renderOrder = -1`. La sphère est dessinée en premier
+ *   sans toucher au tampon de profondeur : tout le décor passe devant, quelle
+ *   que soit la taille de la carte.
+ *
+ * Le rayon suit `fogFar` pour rester entre les plans de coupe de la caméra, et
+ * `game.js` recentre la sphère sur la caméra à chaque image : un ciel qu'on
+ * peut atteindre à pied n'en est pas un.
+ */
+export function buildSky(mapData, quality) {
+  const r = (quality.fogFar || 140) * 0.85;
+  const geo = new THREE.SphereGeometry(r, 24, 16);
+  const pos = geo.attributes.position;
+  const colors = new Float32Array(pos.count * 3);
+
+  // `skyBottom` vaut la couleur de brouillard de la carte : le décor lointain
+  // s'estompe vers le brouillard, et c'est exactement là que le ciel le
+  // rejoint. C'est ce raccord qui fait disparaître la ligne d'horizon.
+  const bas = new THREE.Color().setHex(mapData.skyBottom ?? mapData.fog);
+  const haut = new THREE.Color().setHex(mapData.skyTop ?? mapData.sky);
+  const col = new THREE.Color();
+
+  for (let i = 0; i < pos.count; i++) {
+    // 0 à l'horizon, 1 au zénith ; sous l'horizon on garde la teinte basse,
+    // qui est celle du brouillard, donc le sol se raccorde aussi.
+    const t = Math.max(0, pos.getY(i) / r);
+    // Exposant inférieur à 1 : la transition se fait surtout près de l'horizon,
+    // comme un vrai ciel. En interpolation linéaire pure, le dégradé se voit
+    // par bandes sur une sphère aussi peu segmentée.
+    col.copy(bas).lerp(haut, Math.pow(t, 0.65));
+    const o = i * 3;
+    colors[o] = col.r; colors[o + 1] = col.g; colors[o + 2] = col.b;
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+  const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+    vertexColors: true,
+    side: THREE.BackSide,
+    fog: false,
+    toneMapped: false,
+    depthWrite: false,
+  }));
+  mesh.renderOrder = -1;
+  mesh.frustumCulled = false;
+  return mesh;
+}
+
+/**
  * Éclairage : au plus deux sources, jamais plus. C'est un choix de performance
  * (chaque lumière supplémentaire recompile les matériaux et coûte à chaque pixel).
  * Les facteurs ci-dessous compensent l'éclairage « physique » de three.js,
