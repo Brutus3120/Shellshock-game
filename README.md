@@ -121,7 +121,7 @@ jeton de workflow n'a pas le droit de créer le site lui-même :
 > Settings ▸ Pages ▸ *Build and deployment* ▸ **Source : GitHub Actions**
 
 Après cette activation, relancez le workflow (onglet Actions ▸ *Déployer sur GitHub Pages* ▸
-*Run workflow*) et le jeu sera jouable sur https://brutus3120.github.io/shellshock-game/.
+*Run workflow*) et le jeu sera jouable sur https://brutus3120.github.io/Shellshock-game/.
 
 Ce n'est qu'un confort pour essayer sans rien installer : le jeu reste **entièrement local**
 et, une fois la page chargée, il ne fait plus aucune requête réseau.
