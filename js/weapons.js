@@ -200,12 +200,4 @@ export function createViewModel(id) {
   return g;
 }
 
-/** Petite arme portée par les bots, vue de l'extérieur. */
-export function createBotWeaponMesh(color) {
-  const g = new THREE.Group();
-  g.add(box(0.09, 0.1, 0.55, 0x2b3038, 0, 0, -0.2));
-  g.add(box(0.06, 0.06, 0.14, color, 0, 0.06, -0.05));
-  return g;
-}
-
 export { WEAPON_ORDER };

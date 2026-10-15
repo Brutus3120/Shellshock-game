@@ -16,7 +16,6 @@ import * as THREE from '../vendor/three.module.js';
 import { BOT, WEAPONS, WEAPON_ORDER } from './config.js';
 import { moveActor } from './collision.js';
 import { Loadout } from './weapons.js';
-import { createBotWeaponMesh } from './weapons.js';
 
 const V = () => ({ x: 0, y: 0, z: 0 });
 
@@ -396,7 +395,10 @@ export class Bot {
     this.mesh.visible = true;
     this.mesh.position.set(this.pos.x, this.pos.y, this.pos.z);
     this.mesh.rotation.y = this.yaw;
-    if (this.mesh.userData.arm) this.mesh.userData.arm.rotation.x = -this.pitch;
+    // Signe aligné sur la convention de tir : fireShot envoie la balle vers
+    // by = sin(pitch), donc un tangage positif vise vers le haut. Le bras
+    // portait l'opposé, et montrait le sol quand le bot visait un toit.
+    if (this.mesh.userData.arm) this.mesh.userData.arm.rotation.x = this.pitch;
   }
 }
 
@@ -406,44 +408,96 @@ export class Bot {
  * Silhouette "low-poly" originale : un tronc anguleux, une tête cubique
  * inclinée, deux jambes, un bras porte-arme. Six boîtes au total.
  */
-function buildBotMesh(color) {
-  const g = new THREE.Group();
-  const skin = new THREE.MeshLambertMaterial({ color });
-  const dark = new THREE.MeshLambertMaterial({ color: 0x2a2f38 });
-  const visor = new THREE.MeshLambertMaterial({ color: 0x12161c });
+/**
+ * Fusionne une liste de boîtes en une seule `BufferGeometry` à couleur par
+ * sommet — le même procédé que `world.js` applique au décor, pour la même
+ * raison : un maillage, un draw call.
+ *
+ * La couleur passe par les sommets et non par le matériau, puisque c'est elle
+ * qui empêchait la fusion : trois teintes sur un bot, donc trois matériaux,
+ * donc trois dessins. `ry` est appliqué avant la translation, pour les pièces
+ * posées de biais.
+ */
+function fusionneBoites(boites) {
+  const geos = boites.map((b) => {
+    const g = new THREE.BoxGeometry(b.w, b.h, b.d);
+    if (b.ry) g.rotateY(b.ry);
+    g.translate(b.x, b.y, b.z);
+    return { g, color: b.color };
+  });
 
-  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.72, 0.36), skin);
-  torso.position.set(0, 1.02, 0);
-  g.add(torso);
+  let nv = 0, ni = 0;
+  for (const { g } of geos) { nv += g.attributes.position.count; ni += g.index.count; }
 
-  const hips = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.22, 0.32), dark);
-  hips.position.set(0, 0.66, 0);
-  g.add(hips);
+  const pos = new Float32Array(nv * 3);
+  const nor = new Float32Array(nv * 3);
+  const col = new Float32Array(nv * 3);
+  const idx = new Uint16Array(ni);          // 9 boîtes = 216 sommets, large
+  const c = new THREE.Color();
 
-  for (const s of [-1, 1]) {
-    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.62, 0.24), dark);
-    leg.position.set(s * 0.15, 0.31, 0);
-    g.add(leg);
+  let vo = 0, io = 0;
+  for (const { g, color } of geos) {
+    const n = g.attributes.position.count;
+    pos.set(g.attributes.position.array, vo * 3);
+    nor.set(g.attributes.normal.array, vo * 3);
+    c.setHex(color);
+    for (let i = 0; i < n; i++) {
+      const o = (vo + i) * 3;
+      col[o] = c.r; col[o + 1] = c.g; col[o + 2] = c.b;
+    }
+    const I = g.index.array;
+    for (let i = 0; i < I.length; i++) idx[io + i] = I[i] + vo;
+    vo += n; io += I.length;
+    g.dispose();                            // la géométrie source ne sert plus
   }
 
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.34, 0.36), skin);
-  head.position.set(0, 1.56, 0);
-  head.rotation.y = 0.18;
-  g.add(head);
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  out.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  out.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  out.setIndex(new THREE.BufferAttribute(idx, 1));
+  out.computeBoundingSphere();
+  return out;
+}
 
-  const vis = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.1, 0.06), visor);
-  vis.position.set(0, 1.58, -0.19);
-  g.add(vis);
+const BOT_DARK = 0x2a2f38;      // bassin et jambes
+const BOT_VISOR = 0x12161c;     // visière
+const BOT_GUN = 0x2b3038;       // corps de l'arme
 
-  // Bras + arme, pivotant avec le tangage pour que la visée se lise de loin.
+/**
+ * Un bot en DEUX maillages au lieu de neuf : le corps, et le bras qui pivote.
+ *
+ * Le bras reste séparé parce qu'il tourne avec le tangage, et que c'est ce qui
+ * permet de lire de loin où un bot vise. Le fondre dans le corps rendrait un
+ * troisième draw call sur huit bots, au prix de cette lecture : l'échange n'en
+ * vaut pas la peine.
+ *
+ * Un seul matériau par bot, partagé par les deux maillages. `game.js` libère
+ * les deux par sa traversée de scène, donc rien à défaire ici.
+ */
+function buildBotMesh(color) {
+  const g = new THREE.Group();
+  const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
+
+  const corps = new THREE.Mesh(fusionneBoites([
+    { w: 0.62, h: 0.72, d: 0.36, x: 0, y: 1.02, z: 0, color },                    // torse
+    { w: 0.50, h: 0.22, d: 0.32, x: 0, y: 0.66, z: 0, color: BOT_DARK },          // bassin
+    { w: 0.20, h: 0.62, d: 0.24, x: -0.15, y: 0.31, z: 0, color: BOT_DARK },      // jambe g.
+    { w: 0.20, h: 0.62, d: 0.24, x: 0.15, y: 0.31, z: 0, color: BOT_DARK },       // jambe d.
+    { w: 0.38, h: 0.34, d: 0.36, x: 0, y: 1.56, z: 0, ry: 0.18, color },          // tête
+    { w: 0.30, h: 0.10, d: 0.06, x: 0, y: 1.58, z: -0.19, color: BOT_VISOR },     // visière
+  ]), mat);
+  g.add(corps);
+
+  // Bras + arme, dans le repère du pivot : les décalages de l'ancien groupe
+  // d'arme (0, -0.02, -0.3) sont reportés dans les positions ci-dessous.
   const arm = new THREE.Group();
   arm.position.set(0.3, 1.18, 0);
-  const armMesh = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 0.42), skin);
-  armMesh.position.set(0, 0, -0.16);
-  arm.add(armMesh);
-  const wep = createBotWeaponMesh(color);
-  wep.position.set(0, -0.02, -0.3);
-  arm.add(wep);
+  arm.add(new THREE.Mesh(fusionneBoites([
+    { w: 0.16, h: 0.16, d: 0.42, x: 0, y: 0, z: -0.16, color },                   // bras
+    { w: 0.09, h: 0.10, d: 0.55, x: 0, y: -0.02, z: -0.50, color: BOT_GUN },      // arme
+    { w: 0.06, h: 0.06, d: 0.14, x: 0, y: 0.04, z: -0.35, color },                // bouche
+  ]), mat));
   g.add(arm);
   g.userData.arm = arm;
 

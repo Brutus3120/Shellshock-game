@@ -81,6 +81,14 @@ Ce sont les endroits où une modification « évidente » casse silencieusement 
   seul draw call ; et baisser `aoTile` resserre les ombres de contact en multipliant les triangles
   par le carré du rapport. Une face ne peut pas être plus sombre entre deux de ses sommets : c'est
   toute la raison de la subdivision.
+- **Un bot = deux maillages, pas neuf.** `buildBotMesh` fusionne ses boîtes en deux
+  `BufferGeometry` à couleur par sommet — le corps, et le bras qui pivote — avec un seul matériau
+  par bot. C'est la couleur qui empêchait la fusion : trois teintes signifiaient trois matériaux,
+  donc trois dessins. Mesuré sur huit bots : 72 draw calls avant, 16 après, et 40 matériaux
+  ramenés à 8. **Le bras reste séparé** parce qu'il tourne avec le tangage, et que c'est ce qui
+  permet de lire de loin où un bot vise ; son signe suit `fireShot`, où `by = sin(pitch)`, donc un
+  tangage positif lève l'arme. Ajouter un `Mesh` par pièce de bot est la deuxième façon la plus
+  rapide de perdre le budget GPU, après un mesh par bâtiment.
 - **Collision purement AABB.** Pas de mesh de collision, pas de moteur physique. Le relief est
   fait d'escaliers de boîtes, franchis par un *step-up* automatique de 0,62 m résolu par
   recherche binaire dans `moveActor`. Une rampe inclinée ne serait pas gérée.

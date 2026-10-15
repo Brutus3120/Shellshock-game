@@ -579,7 +579,11 @@ Aucune refonte. Le jeu reste jouable à chaque étape.
 12. **Animations d'arme** : recul, balancement de marche, rechargement en trois temps, changement
     d'arme.
 13. **Motifs de recul par arme**, avec `recoilPattern` dans `config.js`.
-14. **Fusion des maillages de bots en trois groupes**, géométries mises en cache par archétype.
+14. ~~**Fusion des maillages de bots en trois groupes**, géométries mises en cache par archétype.~~
+    **Fait, en deux groupes** — détail au n°5 des priorités ci-dessous. Deux et non trois : hors le
+    bras, qui doit pivoter, rien ne justifiait de séparer davantage. La mise en cache par archétype
+    attend le n°15, puisqu'il n'y a encore qu'un seul type de bot ; la géométrie dépend aujourd'hui
+    de la couleur du bot, qui est cuite dans les sommets.
 15. **Archétypes de bots** et remplacement des tests `def.id === 'broyeur'` par `idealRange`.
 16. **Douilles, fumée, poussière.**
 17. **Écran d'équipement au menu** : trois cases au lieu du sélecteur unique, fiches comparatives
@@ -684,8 +688,16 @@ Les dix premières choses à faire, dans l'ordre, en évitant de refaire ce qui 
    n°1 de la feuille de route ci-dessus.
 4. ~~**Ciel en dégradé** (`world.js`).~~ **Fait** — détail au n°2 de la feuille de route
    ci-dessus.
-5. **Fusion des maillages de bots** (`bots.js`). Environ 70 draw calls récupérés, qui financent
-   tout le reste.
+5. ~~**Fusion des maillages de bots** (`bots.js`).~~ **Fait.** `buildBotMesh` fusionne les boîtes
+   d'un bot en deux `BufferGeometry` à couleur par sommet — le corps, et le bras qui pivote — avec
+   un seul matériau par bot au lieu de cinq. C'est la couleur qui empêchait la fusion. Mesuré sur
+   huit bots, tous forcés visibles : **72 draw calls avant, 16 après, soit 56 récupérés** (−78 %),
+   et 40 matériaux ramenés à 8. L'estimation de départ disait « environ 70 » : elle supposait de
+   tout fondre en un seul maillage. Le bras reste séparé, parce qu'il tourne avec le tangage et que
+   c'est ce qui permet de lire de loin où un bot vise — huit draw calls de plus valent mieux que
+   perdre cette lecture.
+   Au passage, ce pivot était **inversé** : `syncMesh` posait `rotation.x = -pitch` alors que
+   `fireShot` tire vers `by = sin(pitch)`. Un bot visant un toit montrait le sol. Corrigé.
 6. **Ombres de contact** (`effects.js`). Ancre les acteurs au sol sur tous les préréglages, y
    compris `bas`.
 7. **Séparation catalogue / inventaire** (`config.js`, `weapons.js`, `bots.js`). Prérequis
