@@ -640,6 +640,23 @@ Aucune refonte. Le jeu reste jouable à chaque étape.
     vire au blanc avec la chaleur et qui remplace le chargeur. Les retravailler est le n°11.
     Les tests `def.id === 'broyeur'` de `bots.js` restent en place jusqu'au n°15 : en attendant,
     les quatre nouvelles armes engagent à la distance par défaut de 14 m.
+
+    **Ce que les bots en font**, mesuré sur quatre parties de 60 s à onze bots, une par carte :
+    les sept armes tuent sur chaque carte, mais pas au même rythme. Éliminations par minute
+    passée en main : Rafale-9 6,7, Éclisse-2 5,5, Lynx-M 5,4, Prisme 4,6, Guêpe-45 4,0,
+    Broyeur-12 3,6, **Tambour-7 2,7**. Le Tambour souffre de la cadence de tir des bots plus que de
+    ses chiffres : ils tirent par rafales de 0,7 à 1,4 s séparées de pauses, et chaque rafale en
+    perd 0,45 à remonter le barillet. Le Prisme, lui, surchauffe parce qu'un bot ne relâche pas
+    pour laisser remonter la charge.
+
+    Conséquence mesurable sur le **Bunker**, à huit bots : 43 / 39 / 40 / 40 éliminations avant
+    cette étape, 27 / 30 / 32 / 41 / 41 après. Le même code avec le catalogue ramené aux trois
+    armes d'origine en fait 46 / 41 / 44 : le recul ne vient pas des changements du moteur de tir
+    mais du mélange. Dans ces couloirs, le Lynx-M est de loin la meilleure arme d'un bot — 2,9
+    éliminations par minute en main, contre 1,3 à 2,5 pour les quatre nouvelles — et il passe de
+    41 % à 15 % du temps en main. Les trois autres cartes restent dans leur fourchette. C'est au
+    n°15 de le traiter : un archétype « Lourd » qui garde la gâchette, une `idealRange` par arme,
+    et un bot qui relâche le Prisme avant la surchauffe.
 11. **Modèles d'armes retravaillés** — les neuf, avec une fonction de construction par arme au lieu
     du modèle générique paramétré actuel. Environ 12 à 18 boîtes par arme au lieu de 6.
 12. **Animations d'arme** : recul, balancement de marche, rechargement en trois temps, changement
