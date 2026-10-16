@@ -132,6 +132,7 @@ export class Player {
     if (this.crouching) maxSpeed = PLAYER.speedCrouch;
     else if (wantRun && fz * fz + fx * fx > 0) maxSpeed = PLAYER.speedRun;
     if (this.ads > 0.5) maxSpeed *= 0.55;
+    maxSpeed *= this.loadout.current.moveMul;      // le Tambour-7 ralentit qui le tient
 
     const accel = this.onGround ? PLAYER.accelGround : PLAYER.accelAir * PLAYER.speedAir;
     this.vel.x += fx * accel * dt;

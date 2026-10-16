@@ -1,7 +1,7 @@
 # ÉCLAT — FPS arcade 3D, hors-ligne, contre des bots
 
 Un petit jeu de tir à la première personne, **jouable immédiatement sur un PC modeste**,
-sans compte, sans serveur, sans connexion Internet. Quatre cartes originales, trois armes,
+sans compte, sans serveur, sans connexion Internet. Quatre cartes originales, sept armes,
 jusqu'à onze bots, trois niveaux de difficulté, parties de 2 à 10 minutes.
 
 ![Menu principal](docs/menu.png)
@@ -185,13 +185,21 @@ Toutes les cartes offrent plusieurs chemins, de la couverture basse, et au moins
 hauteur. Les points de réapparition sont choisis **le plus loin possible des adversaires
 vivants**, ce qui évite de mourir à l'apparition.
 
-### Les trois armes
+### Les armes
+
+Sept armes existent ; chaque combattant en porte trois. Le joueur part avec les trois premières,
+les bots tirent les leurs au hasard dans les sept à chaque réapparition. Un écran d'équipement,
+pour choisir les siennes, est prévu.
 
 | Arme | Rôle | Dégâts | Cadence | Chargeur | Portée utile |
 |---|---|---|---|---|---|
 | **Rafale-9** | Automatique | 16 | 680 coups/min | 30 | 30 m sans perte |
 | **Lynx-M** | Précision | 62 (×2,2 à la tête) | 195 coups/min, coup par coup | 8 | 110 m sans perte |
 | **Broyeur-12** | Courte portée | 9 plombs × 11 | 78 coups/min | 6 | 7 m, s'effondre au-delà |
+| **Éclisse-2** | Appoint léger | 24 | 380 coups/min, coup par coup | 14 | 20 m ; précise à l'arrêt, pas en courant |
+| **Guêpe-45** | Pression rapprochée | 12 | 940 coups/min | 32 | 12 m ; tolère la course |
+| **Tambour-7** | Tenue de zone | 18 | 720 coups/min après 0,45 s de montée en régime | 100 | 28 m ; se resserre en tir continu, ralentit qui tire |
+| **Prisme** | Faisceau soutenu | 9 par touche | 20 touches/s | charge, pas de chargeur | 40 m sans aucune perte ; surchauffe en 3 s, bloqué 2 s |
 
 Chaque arme a ses propres munitions, sa dispersion (hanche / visée / en mouvement), son recul
 et sa dégressivité de dégâts avec la distance. Les tirs à la tête sont détectés et sonorisés.

@@ -293,6 +293,7 @@ export class Bot {
       this.burstStarted = true;
     }
 
+    w.hold();           // le bot veut tirer : le Tambour-7 monte en régime
     if (w.cooldown > 0) return;
     if (w.tryFire(false)) {
       w.cooldown = w.interval / Math.max(0.2, this.diff.fireRateMul);
@@ -332,7 +333,7 @@ export class Bot {
       wx = steer.x; wz = steer.z;
     }
 
-    const speed = 6.4 * d.speedMul;
+    const speed = 6.4 * d.speedMul * this.loadout.current.moveMul;
     this.vel.x += wx * BOT.accel * dt;
     this.vel.z += wz * BOT.accel * dt;
     if (len < 0.001 && this.onGround) {

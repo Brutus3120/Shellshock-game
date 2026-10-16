@@ -6,8 +6,8 @@ Guide pour Claude Code (claude.ai/code) travaillant dans ce dépôt.
 
 **ÉCLAT** — un FPS 3D arcade jouable hors ligne contre des bots, dans un navigateur, sans
 build, sans npm, sans compte, sans base de données et sans le moindre octet de réseau une fois
-le dépôt cloné. Quatre cartes, trois armes, trois difficultés de bots, un match à durée
-configurable.
+le dépôt cloné. Quatre cartes, sept armes dont le joueur porte trois, trois difficultés de bots,
+un match à durée configurable.
 
 La contrainte qui explique presque tout le code : **ça doit tourner sur un PC faible**. Le
 budget n'est pas « beau », c'est « stable à 60 fps sur un GPU intégré ». Chaque décision
@@ -121,6 +121,16 @@ Ce sont les endroits où une modification « évidente » casse silencieusement 
   garde les points où une capsule tient debout. Pas d'A\* : les bots se dirigent tout droit et
   évitent avec trois rayons « moustaches ». Conséquence : une carte doit rester *lisible en
   ligne droite*, un labyrinthe piégerait les bots.
+- **La cadence est un accumulateur.** `tryFire` *ajoute* l'intervalle au délai restant au lieu
+  de l'imposer, et `update` cesse de décompter à zéro. Remettre `cooldown = interval` paraît
+  équivalent et ne l'est pas : chaque coup attend alors l'image suivante, et la cadence réelle
+  dépend des images par seconde — à 60 Hz la Rafale-9 tirait 600 coups/min au lieu de 680, et le
+  Prisme surchauffait en 3,9 s au lieu de 3.
+- **`hold()` à chaque image où l'acteur veut tirer**, que le coup parte ou non. C'est ce qui fait
+  monter le Tambour-7 en régime (`spinUp`), ce qui empêche la charge du Prisme de remonter
+  (`heat`), et ce qui ralentit celui qui tient la gâchette (`firingMoveMul`). `Weapon.update` le
+  consomme : un contrôleur qui ne l'appelle que lorsque le coup part laisse le Tambour muet. Une
+  arme à `heat` n'a ni chargeur ni réserve : `ammo` y est la charge, `mag` sa capacité.
 - **Pools de taille fixe** pour traceurs et étincelles (`effects.js`) : zéro allocation pendant
   le combat, donc aucun à-coup de GC. Ne pas remplacer par des créations à la volée.
 - **Le HUD est du DOM.** Il reste net quand `renderScale` descend à 0,65, et le GPU ne le touche
@@ -200,6 +210,8 @@ Ce sont les endroits où une modification « évidente » casse silencieusement 
 |---|---|
 | Équilibrer une arme, la vie, la vitesse | `js/config.js` |
 | Ajouter une arme au jeu | `WEAPONS` dans `js/config.js` ; le catalogue suit seul |
+| Son d'une arme | `sound` de l'arme dans `js/config.js` (synthèse : `sfxShot` dans `js/audio.js`) |
+| Silhouette d'une arme en vue subjective | `createViewModel` dans `js/weapons.js` |
 | Inventaire du joueur, tirage des bots | `DEFAULT_SLOTS` dans `js/config.js`, `drawLoadout` dans `js/weapons.js` |
 | Rendre les bots plus durs | `DIFFICULTIES` dans `js/config.js` |
 | Gagner des FPS | `QUALITY` dans `js/config.js` (`renderScale`, `fogFar`, `aoTile`) |

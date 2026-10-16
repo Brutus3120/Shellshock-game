@@ -22,33 +22,96 @@ export class Weapon {
     this.reloading = 0;
     this.triggerHeld = false;
     this.shotsFired = 0;
+    this.spin = 0;          // montée en régime, en secondes (spinUp)
+    this.sustain = 0;       // durée de tir continu, pour settle
+    this.overheat = 0;      // blocage restant après surchauffe (heat)
+    this._held = false;     // gâchette tenue pendant cette image
   }
 
   get interval() { return 60 / this.def.rpm; }
   get isReloading() { return this.reloading > 0; }
+  get isOverheated() { return this.overheat > 0; }
   get isEmpty() { return this.ammo <= 0; }
   get canReload() { return this.ammo < this.def.mag && this.reserve > 0 && !this.isReloading; }
 
+  /** Avancement de la montée en régime, de 0 à 1 (1 pour une arme qui n'en a pas). */
+  get spinFrac() { return this.def.spinUp ? this.spin / this.def.spinUp : 1; }
+
+  /** Facteur de dispersion : 1, sauf une arme qui se resserre en tir continu. */
+  get spreadMul() {
+    const st = this.def.settle;
+    if (!st) return 1;
+    // Rampe de 0,4 s plutôt qu'une marche : on SENT le faisceau se resserrer.
+    const k = Math.max(0, Math.min(1, (this.sustain - st.after) / 0.4));
+    return 1 - (1 - st.mul) * k;
+  }
+
+  /** Facteur de vitesse de déplacement de celui qui la porte. */
+  get moveMul() { return this._held && this.def.firingMoveMul ? this.def.firingMoveMul : 1; }
+
+  /**
+   * Signale que la gâchette est tenue pendant cette image. À appeler à chaque
+   * image où l'acteur VEUT tirer, même si le coup ne part pas (cadence,
+   * montée en régime) : c'est ce qui fait tourner le Tambour-7 et empêche la
+   * charge du Prisme de remonter. `update` le consomme.
+   */
+  hold() { this._held = true; }
+
   update(dt) {
+    const def = this.def;
     if (this.cooldown > 0) this.cooldown -= dt;
     if (this.reloading > 0) {
       this.reloading -= dt;
       if (this.reloading <= 0) {
-        const need = this.def.mag - this.ammo;
+        const need = def.mag - this.ammo;
         const take = Math.min(need, this.reserve);
         this.ammo += take;
         this.reserve -= take;
       }
     }
+
+    if (def.spinUp) {
+      // Le barillet ralentit à la même vitesse qu'il accélère : une rafale
+      // courte après une pause courte n'attend pas toute la montée.
+      this.spin = this._held ? Math.min(def.spinUp, this.spin + dt) : Math.max(0, this.spin - dt);
+    }
+    this.sustain = this._held && this.spinFrac >= 1 ? this.sustain + dt : 0;
+
+    if (def.heat) {
+      if (this.overheat > 0) {
+        // Bloquée : la charge remonte avec le décompte, pour que l'ATH montre
+        // le temps qu'il reste au lieu d'un zéro figé.
+        this.overheat -= dt;
+        this.ammo = this.overheat > 0 ? def.mag * (1 - this.overheat / def.heat.lockout) : def.mag;
+        if (this.overheat < 0) this.overheat = 0;
+      } else if (!this._held) {
+        this.ammo = Math.min(def.mag, this.ammo + def.heat.regen * dt);
+      }
+    }
+    this._held = false;
   }
 
   /** Vrai si le coup part réellement (gère cadence, chargeur, rechargement). */
   tryFire(held) {
-    if (this.reloading > 0 || this.cooldown > 0) return false;
+    // Tolérance d'un millionième : le délai est décompté par soustractions
+    // flottantes, et 0,05 - 3 × (1/60) ne retombe pas à zéro pile.
+    if (this.reloading > 0 || this.cooldown > 1e-6 || this.overheat > 0) return false;
     if (!this.def.auto && held) return false;     // semi-auto : un clic = un coup
+    if (this.spinFrac < 1) return false;          // le barillet n'est pas lancé
     if (this.ammo <= 0) return false;
-    this.ammo--;
-    this.cooldown = this.interval;
+    const heat = this.def.heat;
+    if (heat) {
+      this.ammo -= heat.cost;
+      if (this.ammo <= 0) { this.ammo = 0; this.overheat = heat.lockout; }
+    } else {
+      this.ammo--;
+    }
+    // On AJOUTE l'intervalle au lieu de l'imposer : le reste de l'image
+    // précédente est reporté. Imposé, chaque coup attendait l'image suivante,
+    // et la cadence réelle dépendait des images par seconde — à 60 Hz, la
+    // Rafale-9 tirait 600 coups par minute au lieu de 680. `update` cesse de
+    // décompter à zéro, donc une gâchette relâchée n'accumule pas de rafale.
+    this.cooldown += this.interval;
     this.shotsFired++;
     return true;
   }
@@ -217,17 +280,54 @@ export function createViewModel(id) {
   const def = WEAPONS[id];
   const g = new THREE.Group();
   const dark = 0x353b45, mid = 0x4d5664;
+  const L = def.body[2];
+  const barrel = def.barrel ?? 0.5;
+  // Le canon dépasse du corps de `barrel - 0.07` : ces 7 cm restent engagés
+  // dans le boîtier, quelle que soit la longueur.
+  const tip = L + barrel - 0.07;
 
-  g.add(box(def.body[0], def.body[1], def.body[2], mid, 0, 0, -def.body[2] / 2));
-  g.add(box(0.055, 0.055, 0.5, dark, 0, 0.02, -def.body[2] - 0.18));      // canon
+  g.add(box(def.body[0], def.body[1], L, mid, 0, 0, -L / 2));
+  g.add(box(0.055, 0.055, barrel, dark, 0, 0.02, -tip + barrel / 2));     // canon
   g.add(box(0.07, 0.2, 0.12, dark, 0, -0.14, -0.06));                      // poignée
-  g.add(box(0.08, 0.16, 0.1, def.color, 0, -0.12, -def.body[2] * 0.55));   // chargeur
+  // Pas de chargeur sur une arme à charge : c'est ce qui la distingue au
+  // premier regard.
+  if (!def.heat) g.add(box(0.08, 0.16, 0.1, def.color, 0, -0.12, -L * 0.55));
 
   if (id === 'lynx') {
     g.add(box(0.05, 0.07, 0.3, dark, 0, 0.11, -0.35));                     // lunette
     g.add(box(0.09, 0.09, 0.09, 0x14181d, 0, 0.11, -0.2));
   } else if (id === 'broyeur') {
     g.add(box(0.05, 0.05, 0.36, dark, 0, -0.06, -0.62));                   // pompe
+  } else if (id === 'eclisse') {
+    g.add(box(def.body[0] + 0.012, 0.04, L * 0.92, dark, 0, def.body[1] / 2, -L / 2));   // glissière
+  } else if (id === 'guepe') {
+    const mag = g.children[g.children.length - 1];                         // chargeur incliné
+    mag.rotation.x = 0.38;
+    mag.position.y -= 0.03;
+    g.add(box(0.02, 0.02, 0.24, dark, 0, 0.03, 0.12));                     // crosse fil
+  } else if (id === 'tambour') {
+    // Barillet : quatre tubes autour de l'axe du canon, dans un groupe qui
+    // tourne avec la montée en régime (voir updateCamera dans game.js).
+    const spinner = new THREE.Group();
+    spinner.position.set(0, 0.02, -tip + barrel / 2);
+    for (let k = 0; k < 4; k++) {
+      const a = (k / 4) * Math.PI * 2;
+      spinner.add(box(0.035, 0.035, barrel, dark, Math.cos(a) * 0.045, Math.sin(a) * 0.045, 0));
+    }
+    g.add(spinner);
+    g.userData.spinner = spinner;
+    g.add(box(0.08, 0.10, 0.14, def.color, -0.12, -0.05, -L * 0.55));     // boîtier de bande
+  } else if (id === 'prisme') {
+    // Bloc cristal émissif, et trois ailettes de dissipation. Le cristal est
+    // gardé à part : sa lueur vire au blanc avec la chaleur.
+    const crystal = box(0.09, 0.09, 0.2, def.color, 0, def.body[1] / 2 + 0.03, -L * 0.5);
+    crystal.material.emissive = new THREE.Color(def.color);
+    crystal.material.emissiveIntensity = 0.6;
+    g.add(crystal);
+    g.userData.crystal = crystal;
+    for (let k = 0; k < 3; k++) {
+      g.add(box(def.body[0] + 0.06, 0.012, 0.05, dark, 0, -0.02 + k * 0.045, -L * 0.82));
+    }
   } else {
     g.add(box(0.04, 0.06, 0.16, dark, 0, 0.09, -0.5));                     // poignée de transport
   }
@@ -236,20 +336,19 @@ export function createViewModel(id) {
   led.material.emissiveIntensity = 1;
   g.add(led);
 
-  // Flash de bouche, à la pointe du canon (boîte de 0,5 centrée en
-  // -body[2] - 0.18, donc pointe en -(body[2] + 0.43)). Enfant de l'arme : il
-  // hérite gratuitement du recul, du balancement de marche et de la visée.
+  // Flash de bouche, deux centimètres devant la pointe du canon. Enfant de
+  // l'arme : il hérite gratuitement du recul, du balancement de marche et de
+  // la visée.
   //
   // `muzzle.size` est un rayon en mètres, calibré pour le flash vu de loin dans
   // le monde. Ici la scène est rendue par la caméra d'arme, à moins de deux
   // unités : à taille égale l'étoile mangerait la moitié de l'écran.
   //
-  // Le canon s'arrête en -(body[2] + 0.43) : l'étoile se place JUSTE DEVANT.
-  // Deux centimètres derrière et l'embout du canon masque son cœur lumineux —
-  // ce qui ne se voit pas sur le large flash du Broyeur, mais escamote
-  // complètement celui de la Rafale.
+  // L'étoile se place JUSTE DEVANT la pointe. Deux centimètres derrière et
+  // l'embout du canon masque son cœur lumineux — ce qui ne se voit pas sur le
+  // large flash du Broyeur, mais escamote complètement celui de la Rafale.
   const flash = flashStar(def.muzzle.color, def.muzzle.size * VM_FLASH_SCALE);
-  flash.position.set(0, 0.02, -(def.body[2] + 0.41));
+  flash.position.set(0, 0.02, -(tip - 0.02));
   flash.visible = false;
   g.add(flash);
   g.userData.flash = flash;

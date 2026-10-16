@@ -145,10 +145,13 @@ export class Hud {
     // Arme et munitions
     const w = p.loadout.current;
     this.el.weaponName.textContent = w.def.name + ' · ' + w.def.role;
-    this.el.ammoMag.textContent = w.isReloading ? '··' : w.ammo;
-    this.el.ammoRes.textContent = w.reserve;
-    this.el.ammoRow.classList.toggle('low', !w.isReloading && w.ammo <= w.def.mag * 0.25);
-    this.el.reloadHint.classList.toggle('hidden', !(w.ammo === 0 && !w.isReloading));
+    // Une arme à charge (Prisme) affiche sa charge sur sa capacité : pas de
+    // réserve, et une surchauffe se lit comme une recharge.
+    const busy = w.isReloading || w.isOverheated;
+    this.el.ammoMag.textContent = busy ? '··' : Math.ceil(w.ammo);
+    this.el.ammoRes.textContent = w.def.heat ? w.def.mag : w.reserve;
+    this.el.ammoRow.classList.toggle('low', !busy && w.ammo <= w.def.mag * 0.25);
+    this.el.reloadHint.classList.toggle('hidden', !(w.isEmpty && !busy));
     // Comparaison emplacement par emplacement, sans fabriquer de chaîne : ce
     // test tourne à chaque image et ne réécrit le DOM qu'une fois par partie.
     for (let i = 0; i < SLOT_COUNT; i++) {

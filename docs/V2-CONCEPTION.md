@@ -610,8 +610,36 @@ Aucune refonte. Le jeu reste jouable à chaque étape.
    attendues. Les modèles en vue subjective sont construits pour les emplacements du joueur, pas
    pour le catalogue. `settings.weapon` garde son sens (l'arme en main au départ) : le tableau de
    trois identifiants et sa migration appartiennent à l'écran d'équipement (entrée 17).
-10. **Les quatre armes hitscan nouvelles** : Éclisse-2, Guêpe-45, Tambour-7, Prisme. Définitions
-    dans `config.js`, profils sonores associés, modèles en vue subjective.
+10. ~~**Les quatre armes hitscan nouvelles**~~ : Éclisse-2, Guêpe-45, Tambour-7, Prisme. **Fait.**
+    Le catalogue passe à sept armes, et c'est l'étape 9 qui le permet sans rien toucher d'autre :
+    les bots les tirent dès leur réapparition, et `Loadout` n'a pas changé. Le joueur garde
+    Rafale / Lynx / Broyeur jusqu'à l'écran d'équipement (n°17), qui seul a le droit de changer
+    son inventaire. Les profils sonores quittent `audio.js` pour un champ `sound` par arme, avec
+    deux couches nouvelles — `tail` pour le poids du Tambour-7, `ring` pour le timbre métallique du
+    Prisme —, et tous les sons de bruit lisent désormais **un seul tampon** partagé, à un
+    décalage tiré au hasard, au lieu d'en allouer un par coup.
+
+    Trois mécaniques, une par arme, toutes dans `Weapon` et pilotées par la définition : la
+    montée en régime du Tambour-7 (`spinUp`, premier coup mesuré à 0,47 s), sa dispersion qui se
+    resserre après une seconde de tir continu (`settle`, ×0,45 à 1,4 s), son pas ralenti de 25 %
+    gâchette tenue (`firingMoveMul`) ; et la charge du Prisme (`heat`) : 60 touches en 3,0 s, puis
+    2,0 s de blocage, l'ATH affichant `·· / 100` comme pour une recharge. Elles exigent un appel à
+    `hold()` à chaque image où l'acteur veut tirer, même si le coup ne part pas.
+
+    Les mesurer a mis au jour un défaut **antérieur à la V2** : `tryFire` imposait
+    `cooldown = interval` au lieu de l'ajouter, donc chaque coup attendait l'image suivante. À
+    60 Hz la Rafale-9 tirait **600 coups/min et non 680**, le Tambour-7 en aurait tiré 600 au lieu
+    de 720, le Prisme surchauffait en 3,9 s. Le reste est désormais reporté : cadences mesurées à
+    30, 60 et 144 Hz, toutes à moins de 1 % de la valeur écrite. Côté joueur, c'est **+13 % de
+    cadence réelle pour la Rafale-9** : la valeur que `config.js` annonçait depuis le début. Les
+    bots ne changent pas, ils imposent leur propre délai.
+
+    Les modèles restent le modèle générique paramétré, avec un canon de longueur réglable
+    (`barrel`) et quelques pièces par arme : glissière, chargeur incliné et crosse fil, barillet
+    qui **tourne avec la montée en régime** et annonce le premier coup, cristal dont la lueur
+    vire au blanc avec la chaleur et qui remplace le chargeur. Les retravailler est le n°11.
+    Les tests `def.id === 'broyeur'` de `bots.js` restent en place jusqu'au n°15 : en attendant,
+    les quatre nouvelles armes engagent à la distance par défaut de 14 m.
 11. **Modèles d'armes retravaillés** — les neuf, avec une fonction de construction par arme au lieu
     du modèle générique paramétré actuel. Environ 12 à 18 boîtes par arme au lieu de 6.
 12. **Animations d'arme** : recul, balancement de marche, rechargement en trois temps, changement
@@ -777,8 +805,9 @@ Les dix premières choses à faire, dans l'ordre, en évitant de refaire ce qui 
    qu'il sert le plus, puisque c'est le seul sans ombres portées.
 7. ~~**Séparation catalogue / inventaire**~~ (`config.js`, `weapons.js`, `bots.js`). **Fait** :
    les `(Math.random()*3)|0` ont disparu, et le tirage des bots est éprouvé sur neuf armes.
-8. **Quatre armes hitscan nouvelles + modèles retravaillés** (`config.js`, `weapons.js`).
-   Le gros du gain de variété, sans toucher au moteur de tir.
+8. ~~**Quatre armes hitscan nouvelles**~~ + modèles retravaillés (`config.js`, `weapons.js`).
+   **Les armes sont faites** (n°10 de la feuille de route), sans toucher au moteur de tir ; les
+   modèles retravaillés restent à faire (n°11).
 9. **Animations d'arme** (`game.js`). Recul, marche, rechargement, changement — le poids se
    ressent immédiatement.
 10. ~~**Chevron orange + direction des dégâts au HUD**~~ (`bots.js`, `hud.js`). **Fait** : le

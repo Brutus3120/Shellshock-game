@@ -21,6 +21,26 @@ import * as Sfx from './audio.js';
 const TMP = { x: 0, y: 0, z: 0 };
 const MUZZLE = { x: 0, y: 0, z: 0 };   // sortie réutilisée de muzzlePosition
 const DIR = { x: 0, y: 0, z: 0 };      // direction non dispersée, pour le flash
+const WHITE = new THREE.Color(0xffffff);
+
+// Teinte du faisceau d'une arme à charge, du blanc au fur et à mesure qu'elle
+// chauffe. Quantifiée en HEAT_STEPS paliers calculés une fois par arme : la
+// traçante prend une couleur hexadécimale, et effects.js en garde une
+// conversion par teinte — une teinte continue la ferait grossir sans fin.
+const HEAT_STEPS = 5;
+const HEAT_TINTS = new Map();
+function heatTint(def, heat) {
+  let tints = HEAT_TINTS.get(def.id);
+  if (!tints) {
+    tints = [];
+    const c = new THREE.Color();
+    for (let i = 0; i < HEAT_STEPS; i++) {
+      tints.push(c.setHex(def.color).lerp(WHITE, (i / (HEAT_STEPS - 1)) * 0.8).getHex());
+    }
+    HEAT_TINTS.set(def.id, tints);
+  }
+  return tints[Math.round(heat * (HEAT_STEPS - 1))];
+}
 
 // Ombres de contact. Le rayon reste proche de l'empreinte de l'acteur (0,34 m) :
 // un disque plat déborde d'une marche sans la suivre, donc plus il est large,
@@ -315,8 +335,10 @@ export class Game {
     } else {
       spread = def.spreadHip * 0.8;
     }
+    spread *= weapon.spreadMul;
 
-    Sfx.sfxShot(def.id, isPlayer ? 0 : dist3(shooter.pos, this.player.pos));
+    Sfx.sfxShot(def.sound, isPlayer ? 0 : dist3(shooter.pos, this.player.pos));
+    const tracerColor = def.heat ? heatTint(def, 1 - weapon.ammo / def.mag) : def.color;
 
     let anyHit = false, anyKill = false;
     for (let p = 0; p < def.pellets; p++) {
@@ -327,7 +349,7 @@ export class Game {
       if (this.quality.tracers && (p === 0 || def.pellets <= 3)) {
         const muzzle = this.muzzlePosition(shooter, isPlayer, d);
         this.effects.addTracer(muzzle.x, muzzle.y, muzzle.z,
-          ox + d.x * hit.dist, oy + d.y * hit.dist, oz + d.z * hit.dist, def.color);
+          ox + d.x * hit.dist, oy + d.y * hit.dist, oz + d.z * hit.dist, tracerColor);
       }
     }
 
@@ -345,7 +367,10 @@ export class Game {
     if (isPlayer) {
       const kick = def.recoil * (shooter.ads > 0.5 ? 0.65 : 1) * (shooter.crouching ? 0.8 : 1);
       shooter.addRecoil(kick * 0.012, (Math.random() - 0.5) * kick * 0.006);
-      this.vmRecoil = Math.min(1, this.vmRecoil + 0.35 + def.recoil * 0.12);
+      // L'à-coup de base suit le recul de l'arme, plafonné à celui de la
+      // Rafale-9 : sans ça, vingt touches par seconde de Prisme tiendraient le
+      // modèle braqué de 12° vers le haut pendant tout le faisceau.
+      this.vmRecoil = Math.min(1, this.vmRecoil + 0.35 * Math.min(1, def.recoil / 0.85) + def.recoil * 0.12);
       this.cameraShake = Math.min(0.05, this.cameraShake + def.recoil * 0.006);
       if (anyHit) { this.hud.hitMarker(anyKill); Sfx.sfxHit(); }
     }
@@ -520,7 +545,8 @@ export class Game {
     const held = input.buttons[0];
     const clicked = input.clicked[0];
     if (held) {
-      if (w.ammo <= 0 && !w.isReloading) {
+      w.hold();       // même si le coup ne part pas : le Tambour-7 monte en régime
+      if (w.isEmpty && !w.isReloading && !w.isOverheated) {
         if (clicked) { Sfx.sfxEmpty(); w.startReload(); }
       } else if (w.def.auto || clicked) {
         if (w.tryFire(false)) this.fireShot(p, w, 1);
@@ -610,6 +636,18 @@ export class Game {
       // Un léger biais de lacet donne du volume à l'arme sans coûter un polygone.
       vm.rotation.set(this.vmRecoil * 0.25 + reloadDip * 0.9, 0.10 * (1 - ads) - ads * 0.02, reloadDip * 0.5);
       vm.visible = p.alive;
+
+      // Barillet du Tambour-7 : il tourne avec la montée en régime, ce qui
+      // annonce le premier coup avant qu'il parte.
+      const spinner = vm.userData.spinner;
+      if (spinner) spinner.rotation.z -= w.spinFrac * 38 * dt;
+      // Cristal du Prisme : sa lueur vire au blanc avec la chaleur.
+      const crystal = vm.userData.crystal;
+      if (crystal) {
+        const heat = 1 - w.ammo / w.def.mag;
+        crystal.material.emissive.setHex(w.def.color).lerp(WHITE, heat * 0.85);
+        crystal.material.emissiveIntensity = 0.6 + heat * 0.9;
+      }
 
       // Flash de bouche : allumé par fireShot, éteint ici. L'étoile est un
       // enfant de l'arme, donc elle suit déjà le recul et le balancement.

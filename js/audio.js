@@ -27,12 +27,25 @@ export function setVolume(v) {
   enabled = v > 0.0001;
 }
 
-function noiseBuffer(dur) {
-  const n = Math.max(1, Math.floor(ctx.sampleRate * dur));
-  const buf = ctx.createBuffer(1, n, ctx.sampleRate);
-  const d = buf.getChannelData(0);
-  for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
-  return buf;
+/**
+ * Un seul tampon de bruit blanc pour tous les sons, créé au premier besoin.
+ * Chaque son en lit une tranche à un décalage tiré au hasard, donc deux coups
+ * consécutifs ne sonnent pas identiques. Avant, chaque coup de feu allouait
+ * son propre tampon : à 940 coups par minute et onze bots, c'est le
+ * ramasse-miettes qu'on finit par entendre.
+ */
+const NOISE_LEN = 1.0;          // secondes ; tout son de bruit doit tenir dedans
+let noise = null;
+
+function noiseSlice(src, t, dur) {
+  if (!noise) {
+    const n = Math.floor(ctx.sampleRate * NOISE_LEN);
+    noise = ctx.createBuffer(1, n, ctx.sampleRate);
+    const d = noise.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+  }
+  src.buffer = noise;
+  src.start(t, Math.random() * (NOISE_LEN - dur), dur);
 }
 
 /** Atténuation simple selon la distance à la caméra. */
@@ -41,21 +54,18 @@ function distanceGain(dist) {
   return Math.max(0, 1 - dist / 55) ** 1.6;
 }
 
-export function sfxShot(weaponId, dist) {
+/**
+ * Coup de feu, synthétisé depuis le profil `sound` de l'arme (voir config.js) :
+ * un bruit filtré pour la détonation, un corps grave qui glisse, et deux
+ * couches facultatives — `tail` pour le poids, `ring` pour le métal.
+ */
+export function sfxShot(p, dist) {
   if (!ctx || !enabled) return;
   const g = distanceGain(dist);
   if (g <= 0.01) return;
   const t = ctx.currentTime;
 
-  const profiles = {
-    rafale:  { dur: 0.13, freq: 1400, q: 1.2, level: 0.35, tone: 190 },
-    lynx:    { dur: 0.26, freq: 900,  q: 0.9, level: 0.55, tone: 120 },
-    broyeur: { dur: 0.30, freq: 640,  q: 0.7, level: 0.60, tone: 90 },
-  };
-  const p = profiles[weaponId] || profiles.rafale;
-
   const src = ctx.createBufferSource();
-  src.buffer = noiseBuffer(p.dur);
   const filt = ctx.createBiquadFilter();
   filt.type = 'bandpass';
   filt.frequency.value = p.freq;
@@ -64,7 +74,7 @@ export function sfxShot(weaponId, dist) {
   gain.gain.setValueAtTime(p.level * g, t);
   gain.gain.exponentialRampToValueAtTime(0.0008, t + p.dur);
   src.connect(filt); filt.connect(gain); gain.connect(master);
-  src.start(t); src.stop(t + p.dur);
+  noiseSlice(src, t, p.dur);
 
   // "corps" grave du tir
   const osc = ctx.createOscillator();
@@ -76,6 +86,35 @@ export function sfxShot(weaponId, dist) {
   og.gain.exponentialRampToValueAtTime(0.0008, t + p.dur * 0.8);
   osc.connect(og); og.connect(master);
   osc.start(t); osc.stop(t + p.dur);
+
+  // Queue : le même bruit, filtré bas et plus long, à faible niveau. Ce n'est
+  // pas une réverbération, mais à l'oreille ça en tient lieu pour une arme
+  // lourde, pour le prix d'un filtre.
+  if (p.tail) {
+    const ts = ctx.createBufferSource();
+    const tf = ctx.createBiquadFilter();
+    tf.type = 'lowpass';
+    tf.frequency.value = 700;
+    const tg = ctx.createGain();
+    tg.gain.setValueAtTime(p.level * 0.35 * g, t);
+    tg.gain.exponentialRampToValueAtTime(0.0008, t + p.tail);
+    ts.connect(tf); tf.connect(tg); tg.connect(master);
+    noiseSlice(ts, t, p.tail);
+  }
+
+  // Note aiguë et brève, qui glisse vers le bas : le timbre métallique des
+  // armes à énergie, là où les autres n'ont que du bruit.
+  if (p.ring) {
+    const r = ctx.createOscillator();
+    r.type = 'square';
+    r.frequency.setValueAtTime(p.ring, t);
+    r.frequency.exponentialRampToValueAtTime(p.ring * 0.7, t + p.dur * 1.6);
+    const rg = ctx.createGain();
+    rg.gain.setValueAtTime(p.level * 0.5 * g, t);
+    rg.gain.exponentialRampToValueAtTime(0.0008, t + p.dur * 1.6);
+    r.connect(rg); rg.connect(master);
+    r.start(t); r.stop(t + p.dur * 1.6);
+  }
 }
 
 function blip(freq, dur, level, type = 'square', slideTo = null) {
@@ -110,7 +149,6 @@ export function sfxImpact(dist) {
   if (g <= 0.01) return;
   const t = ctx.currentTime;
   const src = ctx.createBufferSource();
-  src.buffer = noiseBuffer(0.05);
   const filt = ctx.createBiquadFilter();
   filt.type = 'highpass';
   filt.frequency.value = 2200;
@@ -118,5 +156,5 @@ export function sfxImpact(dist) {
   gain.gain.setValueAtTime(0.25 * g, t);
   gain.gain.exponentialRampToValueAtTime(0.0008, t + 0.05);
   src.connect(filt); filt.connect(gain); gain.connect(master);
-  src.start(t); src.stop(t + 0.05);
+  noiseSlice(src, t, 0.05);
 }
