@@ -6,8 +6,8 @@ Guide pour Claude Code (claude.ai/code) travaillant dans ce dépôt.
 
 **ÉCLAT** — un FPS 3D arcade jouable hors ligne contre des bots, dans un navigateur, sans
 build, sans npm, sans compte, sans base de données et sans le moindre octet de réseau une fois
-le dépôt cloné. Quatre cartes, trois armes, trois difficultés de bots, un match à durée
-configurable.
+le dépôt cloné. Quatre cartes, sept armes dont le joueur porte trois, trois difficultés de bots,
+un match à durée configurable.
 
 La contrainte qui explique presque tout le code : **ça doit tourner sur un PC faible**. Le
 budget n'est pas « beau », c'est « stable à 60 fps sur un GPU intégré ». Chaque décision
@@ -53,12 +53,16 @@ js/
   collision.js    AABB, grille, raycast DDA, déplacement d'acteur
   player.js       état et physique du joueur
   input.js        clavier/souris, pointer lock (ZQSD + WASD + flèches)
-  weapons.js      chargeur, cadence, recharge, hitscan
+  weapons.js      chargeur, cadence, recharge, inventaire, modèles d'armes
   bots.js         perception, décision, visée, tir, déplacement
   effects.js      traceurs et étincelles, en pools
   hud.js          barre de vie, munitions, score, killfeed, minimap
   audio.js        SFX synthétisés à la volée en WebAudio
   game.js         le match : monde, acteurs, tir, caméra, rendu, classement
+tools/            vérification (développement seulement, voir tools/README.md)
+  geometrie.mjs   coût géométrique des cartes, sans navigateur
+  simulation.mjs  partie de 60 s par carte, dans Chromium
+  captures.mjs    images à caméra fixe, pour comparer un avant/après
 ```
 
 ## Invariants porteurs
@@ -68,6 +72,43 @@ Ce sont les endroits où une modification « évidente » casse silencieusement 
 - **Un seul draw call pour le décor.** `world.js` fusionne toutes les boîtes d'une carte en une
   `BufferGeometry` unique, couleur par sommet, `MeshLambertMaterial({vertexColors:true})`.
   Ajouter un mesh séparé par bâtiment est la façon la plus rapide de perdre le budget GPU.
+- **L'occlusion ambiante est cuite dans les sommets**, à la construction de la carte. Chaque face
+  est découpée en quads d'au plus `aoTile` mètres (`QUALITY` dans `config.js`) et chaque nœud de
+  cette grille est assombri selon le solide qui l'entoure, sondé par `collision.overlaps`. Coût au
+  rendu : zéro, la couleur de sommet est déjà lue par le shader. Trois conséquences à connaître :
+  la collision doit être construite **avant** la géométrie (l'AO l'interroge) ; une carte compte
+  désormais des dizaines de milliers de triangles au lieu de quelques centaines, ce qui reste un
+  seul draw call ; et baisser `aoTile` resserre ces ombres **du décor** en multipliant les triangles
+  par le carré du rapport. Une face ne peut pas être plus sombre entre deux de ses sommets : c'est
+  toute la raison de la subdivision.
+- **Un bot = deux maillages, pas neuf.** `buildBotMesh` fusionne ses boîtes en deux
+  `BufferGeometry` à couleur par sommet — le corps, et le bras qui pivote — avec un seul matériau
+  par bot. C'est la couleur qui empêchait la fusion : trois teintes signifiaient trois matériaux,
+  donc trois dessins. Mesuré sur huit bots : 72 draw calls avant, 16 après, et 40 matériaux
+  ramenés à 8. **Le bras reste séparé** parce qu'il tourne avec le tangage, et que c'est ce qui
+  permet de lire de loin où un bot vise ; son signe suit `fireShot`, où `by = sin(pitch)`, donc un
+  tangage positif lève l'arme. Ajouter un `Mesh` par pièce de bot est la deuxième façon la plus
+  rapide de perdre le budget GPU, après un mesh par bâtiment.
+- **Deux teintes sont réservées au signal**, et rien d'autre n'a le droit de s'en approcher :
+  l'orange `#ff7a3c` (`SIGNAL_ORANGE` dans `config.js`) désigne l'hostile — chevron d'épaule des
+  bots aujourd'hui, explosions et dégâts reçus demain — et le teal `#4fd1c5` (`--accent` dans
+  `style.css`) désigne le joueur et l'interface. `BOT_COLORS` s'est fait retirer quatre teintes
+  pour cette règle : un cyan et un turquoise à **1°** de teinte du teal, un orange brûlé à 8° du
+  signal, et un saumon sur lequel le chevron ne se détachait pas. L'écart minimal est aujourd'hui
+  de 19°, et une nouvelle couleur de bot doit s'y tenir : les bandes 10-40° (orange) et 160-200°
+  (cyan) sont interdites. Le chevron lui-même **déborde** du torse de 4 cm — une boîte noyée dans
+  une autre ne se voit pas — et ne coûte aucun draw call, puisqu'il entre dans le maillage du corps.
+- **Le catalogue n'est pas l'inventaire.** `WEAPON_CATALOG` est ce qui existe — dérivé de
+  `WEAPONS` par `Object.keys`, jamais recopié à la main. L'inventaire est ce qu'on porte :
+  `Loadout.slots`, exactement `SLOT_COUNT` armes, un emplacement par touche 1/2/3 et par case
+  d'ATH. Ce nombre est fixe quelle que soit la taille du catalogue. Le constructeur de `Loadout`
+  alloue ses trois `Weapon` une fois, et `equip(slots, enMain)` les réarme en place : une
+  réapparition n'alloue rien, même quand un bot change d'armes. Un identifiant inconnu ou un trio
+  incomplet **lèvent une erreur** au lancement, exprès. Les bots tirent leur trio par
+  `drawLoadout()` (trois armes distinctes, la première en main), les modèles en vue subjective
+  sont construits pour les emplacements **du joueur** et non pour le catalogue, et les étiquettes
+  des cases d'ATH viennent de son inventaire — la classe `Hud` vit toute la session, l'inventaire
+  appartient à une partie.
 - **Collision purement AABB.** Pas de mesh de collision, pas de moteur physique. Le relief est
   fait d'escaliers de boîtes, franchis par un *step-up* automatique de 0,62 m résolu par
   recherche binaire dans `moveActor`. Une rampe inclinée ne serait pas gérée.
@@ -80,17 +121,85 @@ Ce sont les endroits où une modification « évidente » casse silencieusement 
   garde les points où une capsule tient debout. Pas d'A\* : les bots se dirigent tout droit et
   évitent avec trois rayons « moustaches ». Conséquence : une carte doit rester *lisible en
   ligne droite*, un labyrinthe piégerait les bots.
+- **La cadence est un accumulateur.** `tryFire` *ajoute* l'intervalle au délai restant au lieu
+  de l'imposer, et `update` cesse de décompter à zéro. Remettre `cooldown = interval` paraît
+  équivalent et ne l'est pas : chaque coup attend alors l'image suivante, et la cadence réelle
+  dépend des images par seconde — à 60 Hz la Rafale-9 tirait 600 coups/min au lieu de 680, et le
+  Prisme surchauffait en 3,9 s au lieu de 3.
+- **`hold()` à chaque image où l'acteur veut tirer**, que le coup parte ou non. C'est ce qui fait
+  monter le Tambour-7 en régime (`spinUp`), ce qui empêche la charge du Prisme de remonter
+  (`heat`), et ce qui ralentit celui qui tient la gâchette (`firingMoveMul`). `Weapon.update` le
+  consomme : un contrôleur qui ne l'appelle que lorsque le coup part laisse le Tambour muet. Une
+  arme à `heat` n'a ni chargeur ni réserve : `ammo` y est la charge, `mag` sa capacité.
 - **Pools de taille fixe** pour traceurs et étincelles (`effects.js`) : zéro allocation pendant
   le combat, donc aucun à-coup de GC. Ne pas remplacer par des créations à la volée.
 - **Le HUD est du DOM.** Il reste net quand `renderScale` descend à 0,65, et le GPU ne le touche
-  jamais. Le passer en canvas coûterait des deux côtés.
+  jamais. Le passer en canvas coûterait des deux côtés. Les arcs de direction des dégâts suivent
+  la même logique : un cercle dont seule la bordure **haute** est peinte donne un secteur de 90°
+  pointant vers le haut, qu'une rotation oriente — aucune image, aucun canvas. Ils sont **en
+  pool** comme les effets 3D : quatre nœuds créés une fois, jamais en combat.
+- **La direction des dégâts vit dans le repère de la CAMÉRA, pas du monde.** `game.js` calcule
+  l'angle avec l'avant `(-sin, -cos)` et la droite `(cos, -sin)` du lacet de vue, ce qui donne 0
+  droit devant et positif vers la droite — exactement le sens de `rotate()` en CSS, donc `hud.js`
+  n'a rien à convertir. Toute conversion ajoutée quelque part entre les deux casse l'indicateur
+  d'une façon qui ne se voit qu'en jeu. La vignette de vie basse, elle, a une **hystérésis**
+  (allumée sous 30, éteinte au-dessus de 35) : sans elle, encaisser à la frontière la fait
+  clignoter.
 - **Deux scènes, deux caméras.** L'arme en vue subjective vit dans sa propre scène avec une
   caméra fov 55 **indépendante du FOV joueur**, rendue après `clearDepth()`. C'est ce qui
   l'empêche de traverser les murs et de se déformer au zoom.
 - **Éclairage physique r169.** Depuis r155 l'intensité 1 est très sombre : `HEMI_GAIN = 3.4` et
   `SUN_GAIN = 3.6` compensent. Deux lumières au total, jamais plus.
-- **Additive blending obligatoire** sur traceurs et étincelles, sinon ils sortent en traits
-  sombres sur fond clair.
+- **Tone mapping ACES, exposition par carte.** `_setupRenderer` pose `ACESFilmicToneMapping` et
+  lit `exposure` dans la carte. Le piège est que **le brouillard et le fond de scène n'y passent
+  pas** : three.js applique `fog_fragment` après `tonemapping_fragment`, et un `scene.background`
+  de type `Color` devient une couleur d'effacement qui ne traverse jamais le shader. Seule la
+  géométrie éclairée est tone-mappée. Monter l'exposition déplace donc le décor en laissant
+  l'horizon sur place, et l'accord entre les deux se défait. D'où la règle de réglage : chaque
+  `exposure` est choisie pour **conserver la luminosité moyenne** de la carte avant la courbe.
+  Ce qu'on gagne n'est pas de la lumière, c'est de l'écart — à luminosité égale, l'écart-type de
+  luminance monte de 20 % (Arène) à 40 % (Bunker). Pour accorder l'horizon, c'est `sky` et `fog`
+  qu'il faut bouger, jamais `exposure`.
+- **Le ciel est un maillage, pas un fond.** Une sphère retournée à couleur par sommet
+  (`buildSky` dans `world.js`), deux teintes par carte, un draw call. Trois réglages la tiennent,
+  et chacun répare une erreur qu'on ne voit qu'en la commettant : `fog: false`, sans quoi le
+  brouillard repeint tout le dégradé en aplat à la distance où elle vit ; `toneMapped: false`,
+  parce que le brouillard ne l'est pas non plus et que le ciel doit rester dans le même espace
+  que lui, sinon l'exposition de la carte déplace l'horizon ; `depthWrite: false` avec
+  `renderOrder = -1`, pour que tout le décor passe devant. `game.js` la recentre sur la caméra à
+  chaque image, sinon on en atteint le bord sur une grande carte. **`skyBottom` reprend la couleur
+  de brouillard** : le décor lointain s'estompe vers elle, donc c'est là que le ciel la rejoint.
+  Coût : environ 10 % d'images par seconde en rendu logiciel, où chaque pixel de fond se paie au
+  processeur. C'est le poste le plus cher de la V2.1 ; si une vraie machine le confirme, c'est un
+  candidat à un réglage de `QUALITY` plutôt qu'à une constante.
+- **Additive blending obligatoire** sur traceurs, étincelles et flashs de bouche, sinon ils
+  sortent en traits sombres sur fond clair.
+- **Le flash de bouche est une étoile à couleur de sommet** : un éventail de triangles dont le
+  centre porte la couleur et dont **tout le pourtour est noir**. En additif le noir ne dessine
+  rien, donc ce noir *est* le dégradé — l'« éclaircir » rendrait un polygone plat et opaque. Même
+  silhouette des deux côtés (`FLASH_RADII` dans `weapons.js`), mais deux implantations : le joueur
+  a la sienne accrochée à son arme, donc elle suit le recul sans code ; les bots passent par un
+  pool de `effects.js`, orienté face à la caméra à l'allumage. `VM_FLASH_SCALE` réduit la première :
+  les deux caméras ne regardent pas à la même distance.
+- **Les ombres de contact sont l'inverse exact du flash de bouche.** Un disque par acteur
+  vivant, tous dans un seul maillage (`effects.js`), en **`MultiplyBlending`** : là où l'additif
+  ne dessine pas le noir, le multiply ne dessine pas le **blanc**, donc le centre est sombre et le
+  pourtour blanc. Le dégradé est dans les sommets — aucune texture, un draw call. Trois réglages
+  de matériau, chacun pour une raison : `transparent: true` ne sert pas à l'opacité mais à
+  l'**ordre** (passe transparente, donc après le sol, qu'un multiply doit trouver déjà écrit) ;
+  `toneMapped: false`, sinon la courbe ACES tord le facteur ; `fog: false`, sinon le brouillard
+  remplace le facteur par sa propre teinte, qui éclaircit. **`toneMapped: false` ne suffit pas** :
+  `colorspace_fragment` encode la sortie en sRGB de toute façon, les deux étapes étant distinctes,
+  si bien qu'un facteur 0,50 posé en linéaire arrive à 0,735 dans le tampon — 26 % d'assombrissement
+  au lieu de 50. `addShadow` écrit donc l'antécédent (`versLineaire`), et `SHADOW_DARK` se lit
+  comme l'assombrissement **à l'écran**. Mesuré, rapport au cœur du disque : 0,735 avant, 0,500
+  après, sur les quatre cartes.
+  Deux autres pièges qui ne préviennent pas : l'**ordre des sommets** doit donner une normale vers
+  le haut, faute de quoi le disque part en face arrière et n'apparaît jamais tout en coûtant son
+  draw call ; et une **plage de dessin nulle coûte quand même un draw call**, d'où le `visible`
+  d'`endShadows`.
+  Actives sur **tous** les préréglages, `bas` compris — c'est là qu'elles servent le plus, puisque
+  c'est le seul sans ombres portées.
 - **Pointer lock exige un geste utilisateur** et impose un délai après Échap — d'où l'écran
   « cliquer pour jouer ». `#overlay` est en `pointer-events:none`, seuls les `.screen` captent
   les clics ; l'inverse avale les clics destinés au canvas.
@@ -100,8 +209,16 @@ Ce sont les endroits où une modification « évidente » casse silencieusement 
 | Envie | Fichier |
 |---|---|
 | Équilibrer une arme, la vie, la vitesse | `js/config.js` |
+| Ajouter une arme au jeu | `WEAPONS` dans `js/config.js` ; le catalogue suit seul |
+| Son d'une arme | `sound` de l'arme dans `js/config.js` (synthèse : `sfxShot` dans `js/audio.js`) |
+| Silhouette d'une arme en vue subjective | `createViewModel` dans `js/weapons.js` |
+| Inventaire du joueur, tirage des bots | `DEFAULT_SLOTS` dans `js/config.js`, `drawLoadout` dans `js/weapons.js` |
 | Rendre les bots plus durs | `DIFFICULTIES` dans `js/config.js` |
-| Gagner des FPS | `QUALITY` dans `js/config.js` (`renderScale`, `fogFar`) |
+| Gagner des FPS | `QUALITY` dans `js/config.js` (`renderScale`, `fogFar`, `aoTile`) |
+| Régler la netteté des ombres cuites du décor | `aoTile` dans `QUALITY`, constantes `AO_*` de `js/world.js` |
+| Régler les ombres de contact sous les acteurs | constantes `SHADOW_*` en tête de `js/game.js` (forme du disque : `js/effects.js`) |
+| Régler l'ambiance lumineuse d'une carte | `exposure`, `sun` et `hemi` de la carte dans `js/maps.js` |
+| Changer la couleur du ciel | `skyTop` / `skyBottom` de la carte dans `js/maps.js` |
 | Modifier ou ajouter une carte | `js/maps.js` (helpers `B`, `perimeter`, `stairs`, `building`) |
 | Comportement des bots | `js/bots.js` (`sense` / `think` / `aim` / `move`) |
 | Placement de l'arme à l'écran | `_setupViewModel` dans `js/game.js` |
@@ -117,10 +234,12 @@ d'erreur numéro un quand on ajoute une boîte.
   est synthétisé. Ne pas importer de contenu d'un jeu existant.
 - **Ajouter une dépendance est un choix à justifier**, pas un réflexe. Aujourd'hui il y en a une
   seule, vendorée.
-- **Vérifier dans un vrai navigateur**, pas par lecture. Le harnais dispose de Chromium
-  (`PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers`, lancer avec `--use-gl=angle
-  --use-angle=swiftshader --enable-unsafe-swiftshader`). Le test qui a de la valeur est une
-  simulation de 60 s sur chaque carte : on regarde le nombre d'éliminations, les bots bloqués au
-  spawn, les acteurs passés sous le sol, et la console.
+- **Vérifier dans un vrai navigateur**, pas par lecture. Les outils de `tools/` le font :
+  `node tools/geometrie.mjs` (deux secondes, sans navigateur) puis `node tools/simulation.mjs`
+  (60 s de jeu par carte dans Chromium — éliminations, bots bloqués au spawn, acteurs passés sous
+  le sol, draw calls du décor, console). `tools/captures.mjs` compare un avant/après en images.
+  Ils sont facultatifs et réservés au développement : le jeu, lui, n'a toujours aucune dépendance
+  et se lance avec `play.sh`. Voir `tools/README.md`, qui documente notamment pourquoi
+  `renderer.info` ment si on le lit après coup.
 - **Le projet doit rester petit et lisible.** C'est une exigence du cahier des charges, pas un
   effet de bord.

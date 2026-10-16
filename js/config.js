@@ -39,7 +39,33 @@ export const BOT = {
   eyeOffset: 0.22,
 };
 
-/** Trois armes aux rôles nettement différents. */
+/**
+ * Le catalogue des armes. Le joueur en porte trois (voir DEFAULT_SLOTS) ; les
+ * bots tirent les leurs dans tout le catalogue.
+ *
+ * `muzzle` décrit le flash de bouche : rayon en mètres, couleur et durée en
+ * secondes. C'est ce qui donne à chaque arme son départ de coup — le Broyeur-12
+ * crache large et orangé, le Lynx-M sec et blanc.
+ *
+ * `sound` est le profil du coup de feu, synthétisé par audio.js : un bruit
+ * filtré en bande passante (`dur`, `freq`, `q`, `level`) et un « corps » grave
+ * qui glisse depuis `tone`. Deux options : `tail`, une queue plus longue et
+ * plus sourde qui donne du poids aux armes lourdes, et `ring`, une note aiguë
+ * brève qui sonne métallique, pour les armes à énergie.
+ *
+ * `barrel` est la longueur du canon du modèle en vue subjective (0,5 m par
+ * défaut) : un pistolet n'a pas le canon d'un fusil.
+ *
+ * Trois mécaniques ne concernent qu'une arme chacune, et vivent dans Weapon :
+ *   spinUp         secondes de gâchette tenue avant le premier coup (Tambour-7)
+ *   settle         la dispersion se resserre après `after` s de tir continu,
+ *                  jusqu'à `mul` fois sa valeur (Tambour-7)
+ *   firingMoveMul  vitesse de déplacement pendant qu'on tient la gâchette
+ *   heat           pas de chargeur mais une CHARGE : `mag` est sa capacité,
+ *                  chaque coup en coûte `cost`, elle remonte de `regen` par
+ *                  seconde quand on relâche, et la vider bloque l'arme
+ *                  `lockout` secondes (Prisme)
+ */
 export const WEAPONS = {
   rafale: {
     id: 'rafale',
@@ -63,6 +89,8 @@ export const WEAPONS = {
     adsFovMul: 0.80,
     color: 0x6fd3ff,
     body: [0.10, 0.13, 0.62],
+    muzzle: { size: 0.36, color: 0xffe9a8, life: 0.045 },
+    sound: { dur: 0.13, freq: 1400, q: 1.2, level: 0.35, tone: 190 },
   },
   lynx: {
     id: 'lynx',
@@ -86,6 +114,8 @@ export const WEAPONS = {
     adsFovMul: 0.42,
     color: 0xffd166,
     body: [0.09, 0.12, 0.86],
+    muzzle: { size: 0.46, color: 0xfff3c0, life: 0.065 },
+    sound: { dur: 0.26, freq: 900, q: 0.9, level: 0.55, tone: 120 },
   },
   broyeur: {
     id: 'broyeur',
@@ -109,10 +139,152 @@ export const WEAPONS = {
     adsFovMul: 0.92,
     color: 0xff7a6b,
     body: [0.12, 0.15, 0.58],
+    muzzle: { size: 0.58, color: 0xffc98a, life: 0.075 },
+    sound: { dur: 0.30, freq: 640, q: 0.7, level: 0.60, tone: 90 },
+  },
+
+  // Pistolet d'appoint : précis à l'arrêt, imprécis en mouvement, et la
+  // recharge la plus courte du jeu.
+  eclisse: {
+    id: 'eclisse',
+    name: 'Éclisse-2',
+    role: 'Appoint léger',
+    auto: false,
+    damage: 24,
+    pellets: 1,
+    rpm: 380,
+    mag: 14,
+    reserve: 70,
+    reloadTime: 1.3,
+    spreadHip: 0.010,       // « quasi nulle à l'arrêt »...
+    spreadAds: 0.003,
+    spreadMove: 0.045,      // ...et c'est le mouvement qui la dégrade
+    recoil: 1.1,
+    range: 45,
+    falloffStart: 20,
+    falloffMin: 0.60,
+    headMul: 2.0,
+    adsFovMul: 0.86,
+    color: 0xb8c4ff,
+    body: [0.07, 0.12, 0.30],
+    barrel: 0.22,
+    muzzle: { size: 0.28, color: 0xfff0c8, life: 0.035 },
+    sound: { dur: 0.10, freq: 1800, q: 1.4, level: 0.30, tone: 230 },
+  },
+
+  // Mitraillette : la cadence la plus haute des armes à balles, de près. Elle
+  // pardonne la course — malus de mouvement moitié moindre que la Rafale-9.
+  guepe: {
+    id: 'guepe',
+    name: 'Guêpe-45',
+    role: 'Pression rapprochée',
+    auto: true,
+    damage: 12,
+    pellets: 1,
+    rpm: 940,
+    mag: 32,
+    reserve: 160,
+    reloadTime: 1.6,
+    spreadHip: 0.040,
+    spreadAds: 0.018,
+    spreadMove: 0.015,
+    recoil: 0.6,
+    range: 32,
+    falloffStart: 12,
+    falloffMin: 0.45,
+    headMul: 1.6,
+    adsFovMul: 0.86,
+    color: 0xc6ff6a,
+    body: [0.10, 0.13, 0.40],
+    barrel: 0.24,
+    muzzle: { size: 0.44, color: 0xffe09a, life: 0.030 },
+    sound: { dur: 0.08, freq: 2000, q: 1.3, level: 0.26, tone: 210 },
+  },
+
+  // Arme lourde : cent coups, mais une montée en régime avant le premier, une
+  // dispersion qui ne se resserre qu'après une seconde de tir, et un pas
+  // ralenti tant qu'on tient la gâchette. Elle tient une zone, elle ne
+  // surprend personne.
+  tambour: {
+    id: 'tambour',
+    name: 'Tambour-7',
+    role: 'Tenue de zone',
+    auto: true,
+    damage: 18,
+    pellets: 1,
+    rpm: 720,
+    mag: 100,
+    reserve: 200,
+    reloadTime: 3.4,
+    spreadHip: 0.048,
+    spreadAds: 0.022,
+    spreadMove: 0.040,
+    recoil: 0.7,
+    range: 70,
+    falloffStart: 28,
+    falloffMin: 0.55,
+    headMul: 1.5,
+    adsFovMul: 0.86,
+    spinUp: 0.45,
+    settle: { after: 1.0, mul: 0.45 },
+    firingMoveMul: 0.75,
+    color: 0xff5ab4,
+    body: [0.16, 0.17, 0.70],
+    barrel: 0.42,
+    muzzle: { size: 0.40, color: 0xffd890, life: 0.050 },
+    sound: { dur: 0.11, freq: 1100, q: 1.0, level: 0.32, tone: 150, tail: 0.20 },
+  },
+
+  // Faisceau : vingt touches par seconde, sans dispersion ni chute de dégâts,
+  // mais trois secondes de tir continu le font surchauffer, et il se bloque
+  // alors deux secondes. Pas de chargeur, donc pas de recharge : une charge
+  // qui remonte dès qu'on relâche.
+  prisme: {
+    id: 'prisme',
+    name: 'Prisme',
+    role: 'Faisceau soutenu',
+    auto: true,
+    damage: 9,
+    pellets: 1,
+    rpm: 1200,
+    mag: 100,               // capacité de la charge, pas un chargeur
+    reserve: 0,
+    reloadTime: 0,
+    heat: { cost: 100 / 60, regen: 40, lockout: 2.0 },   // 60 touches = 3 s de tir
+    spreadHip: 0,
+    spreadAds: 0,
+    spreadMove: 0,
+    recoil: 0.12,
+    range: 40,
+    falloffStart: 40,       // aucune chute : pleine puissance jusqu'à la portée
+    falloffMin: 1,
+    headMul: 1.25,
+    adsFovMul: 0.86,
+    color: 0xa98bff,
+    body: [0.13, 0.15, 0.48],
+    barrel: 0.20,
+    muzzle: { size: 0.30, color: 0xd8c8ff, life: 0.060 },
+    sound: { dur: 0.05, freq: 3200, q: 4, level: 0.10, tone: 330, ring: 2600 },
   },
 };
 
-export const WEAPON_ORDER = ['rafale', 'lynx', 'broyeur'];
+/**
+ * Catalogue et inventaire sont deux choses différentes, et le code les a
+ * longtemps confondues dans une seule constante.
+ *
+ * Le CATALOGUE est ce qui existe : toutes les armes du jeu. Il est dérivé de
+ * WEAPONS et non recopié, donc il ne peut pas en diverger ; l'ordre
+ * d'insertion des clés lui donne un ordre stable pour les menus.
+ *
+ * L'INVENTAIRE est ce qu'on porte : SLOT_COUNT emplacements, un par touche
+ * 1/2/3 et par case d'ATH. Ce nombre est fixe par conception, quelle que soit
+ * la taille du catalogue (voir Loadout dans weapons.js).
+ */
+export const WEAPON_CATALOG = Object.keys(WEAPONS);
+export const SLOT_COUNT = 3;
+
+/** Inventaire du joueur, en attendant l'écran d'équipement du menu. */
+export const DEFAULT_SLOTS = ['rafale', 'lynx', 'broyeur'];
 
 /** Trois niveaux de difficulté pour les bots. */
 export const DIFFICULTIES = {
@@ -136,11 +308,19 @@ export const DIFFICULTIES = {
   },
 };
 
-/** Presets graphiques. Le préréglage "bas" vise les PC sans GPU dédié. */
+/**
+ * Presets graphiques. Le préréglage "bas" vise les PC sans GPU dédié.
+ *
+ * `aoTile` est la finesse de l'occlusion ambiante cuite dans le décor (voir
+ * world.js) : c'est le côté maximal d'un quad, en mètres. Plus il est petit,
+ * plus les ombres de contact sont nettes — et plus la carte compte de
+ * triangles. Comme la géométrie est construite une fois par partie, ce réglage
+ * ne coûte rien pendant le jeu ; il fixe seulement le budget géométrique.
+ */
 export const QUALITY = {
-  bas:    { id: 'bas',    label: 'Bas',    renderScale: 0.65, shadows: false, fogFar: 90,  particles: 0.4, tracers: true },
-  moyen:  { id: 'moyen',  label: 'Moyen',  renderScale: 0.85, shadows: false, fogFar: 140, particles: 1.0, tracers: true },
-  haut:   { id: 'haut',   label: 'Haut',   renderScale: 1.00, shadows: true,  fogFar: 220, particles: 1.4, tracers: true },
+  bas:    { id: 'bas',    label: 'Bas',    renderScale: 0.65, shadows: false, fogFar: 90,  particles: 0.4, tracers: true, aoTile: 1.7 },
+  moyen:  { id: 'moyen',  label: 'Moyen',  renderScale: 0.85, shadows: false, fogFar: 140, particles: 1.0, tracers: true, aoTile: 1.2 },
+  haut:   { id: 'haut',   label: 'Haut',   renderScale: 1.00, shadows: true,  fogFar: 220, particles: 1.4, tracers: true, aoTile: 0.9 },
 };
 
 export const PICKUP = {
@@ -156,7 +336,27 @@ export const BOT_NAMES = [
   'Cobalt', 'Muse', 'Fable', 'Cendre', 'Zigg', 'Onyx', 'Pyrite', 'Lumen',
 ];
 
+/**
+ * Orange de signal. Il désigne l'hostile et le danger, et RIEN d'autre : le
+ * chevron d'épaule des bots aujourd'hui, les zones d'explosion et les dégâts
+ * reçus ensuite. Son pendant est le teal `#4fd1c5` de l'interface et du
+ * joueur (voir `--accent` dans style.css). Ces deux teintes sont réservées :
+ * c'est ce qui garantit qu'une tache orange à 40 m est toujours une cible, et
+ * jamais un mur ni un élément d'ATH.
+ */
+export const SIGNAL_ORANGE = 0xff7a3c;
+
+/**
+ * Couleurs d'équipe des bots. Aucune ne doit s'approcher des deux teintes de
+ * signal : trois d'entre elles le faisaient et ont été remplacées — un cyan
+ * (0x5ad1e8) et un turquoise (0x4ad8c8) à quelques degrés du teal d'interface,
+ * un orange brûlé (0xd88a4a) qui entrait en collision avec le chevron, et un
+ * saumon (0xe86a5a) sur lequel un chevron orange ne se détachait pas — vérifié
+ * en capture, c'est le cas qui ruinait la règle du signal.
+ * Les bandes de teinte libres sont le rouge, le jaune, le vert, le bleu et le
+ * magenta ; le cyan-turquoise (160-200°) et l'orange (10-40°) sont interdits.
+ */
 export const BOT_COLORS = [
-  0xe86a5a, 0x5ad1e8, 0xe8c65a, 0x9a6ae8, 0x5ae88c, 0xe85aa8,
-  0x6a8ce8, 0xd88a4a, 0x8ce85a, 0xe85a5a, 0x4ad8c8, 0xb8b8c8,
+  0xe85a5a, 0xd84ad8, 0xe8c65a, 0x9a6ae8, 0x5ae88c, 0xe85aa8,
+  0x6a8ce8, 0xc8e84a, 0x8ce85a, 0x5a9ae8, 0x6a5ae8, 0xb8b8c8,
 ];
