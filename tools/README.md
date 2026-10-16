@@ -61,6 +61,20 @@ deux séries ne diffèrent que par ce qu'on a modifié. `--flash` allume le flas
 de bouche ; `--qualite=bas` est le défaut, et c'est le seul préréglage sans
 ombres portées, donc celui qui juge honnêtement l'éclairage cuit dans le décor.
 
+`--acteurs` pose deux bots devant la caméra, un au sol et un à un mètre de haut,
+et calcule leurs ombres de contact. Il existe parce que l'outil ne SAVAIT PAS
+les montrer : la passe d'ombres vit sous la garde `active` de `Game.update`, que
+`paused = true` ferme, et les bots sont masqués par défaut. Une capture sans ce
+drapeau ne peut donc contenir aucun disque, quoi qu'on change dans `effects.js`.
+
+Les deux bots valent mieux qu'un : au sol le disque est serré et net, en l'air
+large et pâle, et c'est l'écart entre les deux qui montre que l'ombre encode la
+hauteur. Leurs positions sont données dans le repère de la caméra, donc la même
+table sert les cinq vues ; `standingY` refuse un emplacement inutilisable, et
+la ligne de sortie indique alors combien de bots ont réellement été posés —
+mieux vaut un bot en moins qu'un bot dans un mur. Sans le drapeau, rien ne
+change et une série reste comparable aux anciennes.
+
 ## Installation
 
 Seuls `simulation.mjs` et `captures.mjs` ont besoin de Chromium :

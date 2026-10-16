@@ -13,6 +13,11 @@
  *                    c'est aussi le seul sans ombres portées, donc celui qui
  *                    juge honnêtement l'éclairage cuit)
  *   --flash          allume le flash de bouche sur les captures d'arme
+ *   --acteurs        pose deux bots devant la caméra, un au sol et un en l'air,
+ *                    et calcule leurs ombres de contact
+ *
+ * Sans `--acteurs`, les bots sont masqués comme ils l'ont toujours été, et une
+ * série reste comparable aux anciennes.
  */
 
 import path from 'node:path';
@@ -25,6 +30,22 @@ const args = Object.fromEntries(process.argv.slice(2)
 const SORTIE = path.resolve(args.sortie || path.join(RACINE, 'captures'));
 const QUALITE = args.qualite || 'bas';
 const FLASH = args.flash === 'true';
+const ACTEURS = args.acteurs === 'true';
+
+/**
+ * Où poser les bots quand `--acteurs` est demandé, en mètres et dans le repère
+ * de la CAMÉRA : « avant » le long du regard, « côté » à sa droite, « haut »
+ * au-dessus du sol. Les coordonnées sont relatives et non absolues, donc la
+ * même table sert les cinq vues sans rien savoir des cartes.
+ *
+ * Un bot au sol et un en l'air, parce que c'est le couple qui se lit : le
+ * premier a un disque serré et net, le second large et pâle. Une capture avec
+ * un seul des deux ne dirait pas que l'ombre encode la hauteur.
+ */
+const ACTEURS_PLAN = [
+  { avant: 4.0, cote: -1.2, haut: 0 },
+  { avant: 5.5, cote: 1.3, haut: 1.0 },
+];
 
 /**
  * Points de vue choisis pour ce qu'ils montrent, pas au hasard :
@@ -52,11 +73,12 @@ let carteCourante = null;
 for (const v of VUES) {
   if (v.carte !== carteCourante) {
     await page.evaluate(new Function('return ' + DEMARRER_PARTIE)(),
-      { map: v.carte, quality: QUALITE, botCount: 0, difficulty: 'normal', duration: 300, scoreLimit: 0 });
+      { map: v.carte, quality: QUALITE, botCount: ACTEURS ? ACTEURS_PLAN.length : 0,
+        difficulty: 'normal', duration: 300, scoreLimit: 0 });
     carteCourante = v.carte;
   }
 
-  const mesure = await page.evaluate(({ v, flash }) => {
+  const mesure = await page.evaluate(({ v, flash, acteurs, plan }) => {
     const g = window.ECLAT.game;
     g.paused = true;                       // plus rien ne bouge
     window.ECLAT.menu.hideAll();
@@ -68,6 +90,35 @@ for (const v of VUES) {
     g.player.yaw = v.yaw; g.player.pitch = v.pitch;
     g.player.recoilPitch = 0; g.player.recoilYaw = 0;
 
+    let poses = 0;
+    if (acteurs) {
+      // Repère de la caméra. `fireShot` définit l'avant comme (-sin, -cos) du
+      // lacet ; la droite s'en déduit, et les deux servent à convertir la table.
+      const fx = -Math.sin(v.yaw), fz = -Math.cos(v.yaw);
+      const rx = Math.cos(v.yaw), rz = -Math.sin(v.yaw);
+      for (let i = 0; i < g.bots.length; i++) {
+        const b = g.bots[i], p = plan[i];
+        if (!p) { b.alive = false; continue; }
+        const bx = v.x + fx * p.avant + rx * p.cote;
+        const bz = v.z + fz * p.avant + rz * p.cote;
+        // standingY refuse un emplacement inutilisable : mieux vaut un bot en
+        // moins qu'un bot dans un mur, qui rendrait la capture trompeuse.
+        const by = g.standingY(bx, bz);
+        if (by === null) { b.alive = false; continue; }
+        b.alive = true;
+        b.onGround = p.haut === 0;
+        b.pos.x = bx; b.pos.z = bz; b.pos.y = by + p.haut;
+        b.yaw = v.yaw + Math.PI; b.pitch = 0;    // face à l'objectif
+        b.mesh.visible = true;
+        b.syncMesh();
+        poses++;
+      }
+      // La passe d'ombres vit sous la garde `active` de Game.update, que la
+      // pause ferme : sans cet appel explicite, aucune capture ne peut contenir
+      // un disque. C'est la raison d'être du drapeau.
+      g._updateShadows();
+    }
+
     // La boucle rAF du jeu continue de tourner même en pause, et re-rendra la
     // scène après nous. Un flash allumé pour 45 ms serait éteint avant que la
     // capture soit prise : on prolonge son compteur le temps de l'image.
@@ -78,12 +129,13 @@ for (const v of VUES) {
     g.renderer.render(g.scene, g.camera);
     const decor = g.renderer.info.render.calls;
     if (g.player.alive) { g.renderer.clearDepth(); g.renderer.render(g.vmScene, g.vmCamera); }
-    return { decor };
-  }, { v, flash: FLASH });
+    return { decor, poses };
+  }, { v, flash: FLASH, acteurs: ACTEURS, plan: ACTEURS_PLAN });
 
   const fichier = path.join(SORTIE, `${v.carte}-${v.nom}.png`);
   await page.screenshot({ path: fichier });
-  console.log(`${v.carte}/${v.nom} → ${fichier}  (scène monde : ${mesure.decor} draw calls)`);
+  const bots = ACTEURS ? `, ${mesure.poses}/${ACTEURS_PLAN.length} bots posés` : '';
+  console.log(`${v.carte}/${v.nom} → ${fichier}  (scène monde : ${mesure.decor} draw calls${bots})`);
 }
 
 await navigateur.close();
