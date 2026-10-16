@@ -147,11 +147,17 @@ Ce sont les endroits où une modification « évidente » casse silencieusement 
   pourtour blanc. Le dégradé est dans les sommets — aucune texture, un draw call. Trois réglages
   de matériau, chacun pour une raison : `transparent: true` ne sert pas à l'opacité mais à
   l'**ordre** (passe transparente, donc après le sol, qu'un multiply doit trouver déjà écrit) ;
-  `toneMapped: false`, sinon la courbe ACES tord le facteur et 0,5 n'assombrit plus de moitié ;
-  `fog: false`, sinon le brouillard remplace le facteur par sa propre teinte, qui éclaircit. Deux
-  pièges qui ne préviennent pas : l'**ordre des sommets** doit donner une normale vers le haut,
-  faute de quoi le disque part en face arrière et n'apparaît jamais tout en coûtant son draw call ;
-  et une **plage de dessin nulle coûte quand même un draw call**, d'où le `visible` d'`endShadows`.
+  `toneMapped: false`, sinon la courbe ACES tord le facteur ; `fog: false`, sinon le brouillard
+  remplace le facteur par sa propre teinte, qui éclaircit. **`toneMapped: false` ne suffit pas** :
+  `colorspace_fragment` encode la sortie en sRGB de toute façon, les deux étapes étant distinctes,
+  si bien qu'un facteur 0,50 posé en linéaire arrive à 0,735 dans le tampon — 26 % d'assombrissement
+  au lieu de 50. `addShadow` écrit donc l'antécédent (`versLineaire`), et `SHADOW_DARK` se lit
+  comme l'assombrissement **à l'écran**. Mesuré, rapport au cœur du disque : 0,735 avant, 0,500
+  après, sur les quatre cartes.
+  Deux autres pièges qui ne préviennent pas : l'**ordre des sommets** doit donner une normale vers
+  le haut, faute de quoi le disque part en face arrière et n'apparaît jamais tout en coûtant son
+  draw call ; et une **plage de dessin nulle coûte quand même un draw call**, d'où le `visible`
+  d'`endShadows`.
   Actives sur **tous** les préréglages, `bas` compris — c'est là qu'elles servent le plus, puisque
   c'est le seul sans ombres portées.
 - **Pointer lock exige un geste utilisateur** et impose un délai après Échap — d'où l'écran

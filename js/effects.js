@@ -51,6 +51,24 @@ for (let s = 0; s < SHADOW_SPOKES; s++) {
  * par un décalage de bits sans changer toutes les teintes. On la fait donc une
  * fois par teinte, et plus jamais — sinon c'est une allocation à chaque coup tiré.
  */
+/**
+ * sRGB → linéaire, pour un canal seul.
+ *
+ * Indispensable aux ombres de contact, et c'est le piège le plus coûteux de
+ * tout le fichier parce qu'il est MUET. Le shader écrit la couleur de sommet
+ * telle quelle, puis `colorspace_fragment` l'encode en sRGB — et ça, contrairement
+ * à ce qu'on croit en lisant le matériau, `toneMapped: false` ne le désactive
+ * PAS : les deux étapes sont distinctes. Un facteur 0,50 posé en linéaire arrive
+ * donc à 0,735 dans le tampon, soit 26 % d'assombrissement au lieu de 50. On
+ * écrit donc l'antécédent, pour que l'encodage de sortie rende le facteur voulu.
+ *
+ * Pas de `THREE.Color` ici : il en faudrait une instance par appel, soit une
+ * allocation par acteur et par image, ce que ce fichier existe pour éviter.
+ */
+function versLineaire(c) {
+  return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+}
+
 const COLORS = new Map();
 const _work = new THREE.Color();
 function rgbOf(hex) {
@@ -200,7 +218,9 @@ export class Effects {
     if (this._shadow >= SHADOWS) return;
     const i = this._shadow++;
     const base = i * SHADOW_VERTS;
-    const k = 1 - Math.max(0, Math.min(1, strength));
+    // `strength` est l'assombrissement VOULU À L'ÉCRAN ; `k` est ce qu'il faut
+    // écrire en linéaire pour l'obtenir après encodage sRGB (voir versLineaire).
+    const k = versLineaire(1 - Math.max(0, Math.min(1, strength)));
 
     let o = base * 3;
     this.gPos[o] = x; this.gPos[o + 1] = y; this.gPos[o + 2] = z;

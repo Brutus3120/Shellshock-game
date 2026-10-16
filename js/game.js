@@ -27,7 +27,8 @@ const DIR = { x: 0, y: 0, z: 0 };      // direction non dispersée, pour le flas
 // plus il flotte au bord d'un escalier. SHADOW_CORE le resserre encore, et seul
 // le dégradé dépasse.
 const SHADOW_RADIUS = 0.58;   // rayon au sol, en mètres
-const SHADOW_DARK = 0.50;     // assombrissement au centre, au contact
+const SHADOW_DARK = 0.50;     // assombrissement au centre, au contact, TEL QU'À L'ÉCRAN
+                              // (effects.js écrit son antécédent linéaire : voir versLineaire)
 const SHADOW_AIR = 2.2;       // hauteur à laquelle l'ombre s'éteint (un saut culmine à 1,0 m)
 const SHADOW_GROW = 0.45;     // élargissement de la pénombre, par mètre d'altitude
 const SHADOW_LIFT = 0.02;     // décollement du sol, contre le z-fighting
