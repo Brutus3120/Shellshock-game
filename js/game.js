@@ -87,6 +87,9 @@ export class Game {
     this.renderer.setClearColor(0x000000, 1);
     this.renderer.autoClear = false;
     this.renderer.shadowMap.enabled = this.quality.shadows;
+    // Là où les vraies ombres portées existent, le disque n'a plus à faire tout
+    // le travail : à pleine force il s'additionnerait à elles sous les pieds.
+    this.shadowStrength = this.quality.shadows ? 0.55 : 1;
     if (this.quality.shadows) this.renderer.shadowMap.type = THREE.PCFShadowMap;
 
     // Courbe ACES. Le rendu linéaire ne saturait pas — rien ne partait au blanc —
@@ -109,8 +112,12 @@ export class Game {
     // pas à assombrir le combat rapproché.
     this.scene.fog = new THREE.Fog(this.mapData.fog, this.quality.fogFar * 0.45, this.quality.fogFar);
     this.scene.add(this.world.mesh);
-    this.sky = buildSky(this.mapData, this.quality);
-    this.scene.add(this.sky);
+    // Le ciel n'existe que pour les cartes qui en déclarent un. Sous un plafond
+    // il serait invisible, et ce serait le poste le plus cher du palier payé
+    // pour rien : la sphère couvre tout l'écran, et en rendu logiciel chaque
+    // pixel de fond se paie au processeur.
+    this.sky = this.mapData.skyTop ? buildSky(this.mapData, this.quality) : null;
+    if (this.sky) this.scene.add(this.sky);
     if (this.quality.shadows) { this.world.mesh.receiveShadow = true; this.world.mesh.castShadow = true; }
     this.lights = setupLights(this.scene, this.mapData, this.quality.shadows);
 
@@ -267,7 +274,8 @@ export class Game {
       // En montant, l'ombre pâlit et s'élargit : c'est ce couple qui fait lire
       // l'altitude, là où une tache d'intensité fixe ne dirait que la position.
       fx.addShadow(a.pos.x, gy + SHADOW_LIFT, a.pos.z,
-                   SHADOW_RADIUS * (1 + h * SHADOW_GROW), SHADOW_DARK * fade);
+                   SHADOW_RADIUS * (1 + h * SHADOW_GROW),
+                   SHADOW_DARK * fade * this.shadowStrength);
     }
     fx.endShadows();
   }
@@ -559,7 +567,7 @@ export class Game {
     this.camera.position.set(p.pos.x + bobX, p.eyeY + bobY, p.pos.z);
     // Le ciel reste centré sur la caméra : sans ça on finirait par en toucher
     // le bord sur une grande carte, et il serait coupé par le plan lointain.
-    this.sky.position.copy(this.camera.position);
+    if (this.sky) this.sky.position.copy(this.camera.position);
     this.camera.rotation.set(0, 0, 0);
     this.camera.rotation.order = 'YXZ';
     this.camera.rotation.y = p.viewYaw + sx;

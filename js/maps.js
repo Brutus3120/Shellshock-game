@@ -256,7 +256,8 @@ function mapBunker() {
     sampleY: H - 0.5,
     sun: { color: 0xcfe4ff, intensity: 0.75, dir: [0.2, 1, -0.3] },
     hemi: { sky: 0x8fa6ba, ground: 0x3a4048, intensity: 1.55 },
-    skyTop: 0x12171c, skyBottom: 0x1b2026,
+    // Pas de skyTop : le Bunker est couvert, on n'y voit jamais le ciel. C'est
+    // la CARTE qui décide, pas le moteur — voir `_setupWorld`.
     exposure: 1.25,
     size: S,
     boxes: o,
